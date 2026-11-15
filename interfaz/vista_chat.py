@@ -204,20 +204,47 @@ class BurbujaReceptor(_ConTextoAjustable, QFrame):
         cab = QHBoxLayout()
         cab.setSpacing(10)
         titulo = ("Receptor · mensaje recuperado" if r.exito
+                  else "Receptor · decodificación ambigua" if r.hay_empates
                   else "Receptor · mensaje con errores residuales")
         cab.addWidget(etiqueta(titulo, "AutorBurbuja"))
         cab.addStretch(1)
         cab.addWidget(ChipEstado(r.estado))
         caja.addLayout(cab)
 
-        contenido, hay_diferencias = html_recuperado(r.texto or "", r.texto_recuperado or "")
-        self._lbl = lbl = QLabel(contenido or "∅")
+        if r.hay_empates:
+            # No se convierte a UTF‑8 una secuencia con bits ambiguos.
+            contenido, hay_diferencias = "", False
+        else:
+            contenido, hay_diferencias = html_recuperado(r.texto or "", r.texto_recuperado or "")
+        self._lbl = lbl = QLabel(contenido or ("" if r.hay_empates else "∅"))
         lbl.setObjectName("TextoBurbuja")
         lbl.setTextFormat(Qt.TextFormat.RichText)
         lbl.setWordWrap(True)
         lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         caja.addWidget(lbl)
-        if not r.exito:
+        lbl.setVisible(bool(lbl.text()))
+        if r.hay_empates:
+            aviso = QFrame()
+            aviso.setObjectName("AvisoEmpate")
+            aviso.setStyleSheet(f"QFrame#AvisoEmpate {{ background: {rgba(C.AMBAR, 0.10)};"
+                                f" border: 1px solid {rgba(C.AMBAR, 0.40)}; border-radius: 8px; }}")
+            col = QVBoxLayout(aviso)
+            col.setContentsMargins(10, 8, 10, 8)
+            col.setSpacing(3)
+            titulo_aviso = etiqueta("⚠ Decodificación ambigua: algunos bits no pudieron recuperarse",
+                                    "Etiqueta", ajustar=True)
+            titulo_aviso.setStyleSheet(f"color: {C.AMBAR}; font-weight: 700;")
+            col.addWidget(titulo_aviso)
+            detalle = etiqueta(
+                f"{r.empates} de {len(r.bits_originales)} bits quedaron empatados (?) "
+                f"({r.tasa_empates:.1%}). Errores residuales entre los bits decididos: "
+                f"{r.errores_residuales}. BER sobre bits decididos: {formato_ber(r.ber_con_codigo)}. "
+                "El texto no se reconstruye; revisa los bits en «Detalles de transmisión».",
+                "EtiquetaSecundaria", ajustar=True)
+            detalle.setStyleSheet(f"color: {C.TEXTO};")
+            col.addWidget(detalle)
+            caja.addWidget(aviso)
+        elif not r.exito:
             aviso = QFrame()
             aviso.setObjectName("AvisoResidual")
             aviso.setStyleSheet(f"QFrame#AvisoResidual {{ background: {rgba(C.ERROR, 0.10)};"
@@ -517,7 +544,8 @@ class PanelCanal(AreaDesplazable):
         rejilla.addWidget(etiqueta("Código de repetición (n)", "Etiqueta"), 0, 0)
         self.selector_n = SelectorN(estado.n)
         rejilla.addWidget(self.selector_n, 0, 1)
-        rejilla.addWidget(etiqueta("Cada bit se envía n veces · solo n impar", "Ayuda"), 1, 0, 1, 2)
+        rejilla.addWidget(etiqueta("Cada bit se envía n veces · con n par puede haber empates (?)",
+                                   "Ayuda"), 1, 0, 1, 2)
         rejilla.setRowMinimumHeight(2, 10)
         fila_p = QHBoxLayout()
         fila_p.addWidget(etiqueta("Probabilidad de error (p)", "Etiqueta"), 1)
@@ -592,14 +620,20 @@ class PanelCanal(AreaDesplazable):
         chat = [r for r in self.estado.historial if r.origen == "chat"]
         if chat:
             u = chat[-1]
-            self.m_ber.set_valor(formato_ber(u.ber_con_codigo),
-                                 f"sin código: {formato_ber(u.ber_sin_codigo)}")
+            if u.hay_empates:
+                self.m_ber.set_valor(formato_ber(u.ber_con_codigo),
+                                     f"sobre bits decididos · {u.empates} empate(s)")
+            else:
+                self.m_ber.set_valor(formato_ber(u.ber_con_codigo),
+                                     f"sin código: {formato_ber(u.ber_sin_codigo)}")
             self.m_ber.setToolTip(f"Última transmisión del chat (n = {u.n}, p = {formato_p(u.p)}).")
         else:
             self.m_ber.set_valor(None, "Envía un mensaje para medirla")
 
         # Gráfica: curva teórica (core) + BER medidas en el chat con el mismo p
-        medidos = [r for r in chat if abs(r.p - p) < 1e-9]
+        # Solo n impar: la curva teórica es para n impar y, con empates, la BER no es total.
+        medidos = [r for r in chat if abs(r.p - p) < 1e-9 and r.n % 2 == 1
+                   and r.ber_con_codigo is not None]
         por_n: dict[int, list[float]] = {}
         for r in medidos:
             por_n.setdefault(r.n, []).append(r.ber_con_codigo)

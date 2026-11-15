@@ -64,6 +64,7 @@ class TablaComparacion(Tarjeta):
             v.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             rej.addWidget(v, i, 1)
             valores[clave] = v
+            valores[clave + "_nombre"] = lbl
         rej.setColumnStretch(0, 1)
         rej.setRowStretch(len(filas) + 1, 1)
         fila.addWidget(marco, 1)
@@ -73,13 +74,23 @@ class TablaComparacion(Tarjeta):
         self._exp["ber_sin"].setText(formato_ber(r.ber_sin_codigo))
         self._exp["ber_canal"].setText(formato_ber(r.ber_canal))
         self._exp["ber_con"].setText(formato_ber(r.ber_con_codigo))
+        self._exp["ber_con_nombre"].setText("BER sobre bits decididos" if r.hay_empates
+                                            else "BER después de decodificar")
+        self._exp["ber_con"].setToolTip("N/D: ningún bit tuvo decisión (todos empatados)"
+                                        if r.ber_con_codigo is None else "")
         pe = r.error_residual_teorico
-        self._teo["pe"].setText(formato_ber(pe) if pe is not None else "No disponible")
+        self._teo["pe"].setText(formato_ber(pe) if pe is not None else "N/D")
+        self._teo["pe"].setToolTip("" if pe is not None else
+                                   "N/D: la fórmula teórica del núcleo solo está definida para n impar")
         self._teo["t"].setText(str(r.t))
         self._teo["r"].setText(f"{r.parametros['tasa']:.4f}")
         self._teo["c"].setText(f"{r.capacidad:.4f}")
+        par = ("Pₑ es N/D porque la fórmula teórica del núcleo solo está definida para n impar. "
+               if r.error_residual_teorico is None else "")
+        empates = par + (f"Hubo {r.empates} empate(s) ({r.tasa_empates:.1%}): la BER después de decodificar "
+                   f"se calcula solo sobre los {r.bits_decididos} bits decididos. " if r.hay_empates else "")
         self.nota.setText(
-            f"Con {len(r.bits_originales)} bits, la BER medida es una estimación sujeta a variación "
+            empates + f"Con {len(r.bits_originales)} bits, la BER medida es una estimación sujeta a variación "
             "aleatoria y no tiene por qué coincidir con Pₑ. "
             + ("La tasa R supera la capacidad C: según Shannon, a esa tasa no puede lograrse una "
                "comunicación arbitrariamente fiable." if r.parametros["tasa"] > r.capacidad else
@@ -291,7 +302,8 @@ class VistaLaboratorio(QWidget):
         self.m_alterados.set_valor(str(r.errores_canal),
                                    f"en {r.bloques_afectados} de {r.total_bloques} bloques")
         self.m_fallidos.set_valor(str(r.bloques_fallidos),
-                                  f"{r.bloques_corregidos} bloque(s) con errores corregidos")
+                                  f"{r.bloques_corregidos} bloque(s) con errores corregidos"
+                                  + (f" · {r.empates} empate(s)" if r.hay_empates else ""))
         self.comparacion.mostrar(r)
 
         lay = self.resultados.layout_interno

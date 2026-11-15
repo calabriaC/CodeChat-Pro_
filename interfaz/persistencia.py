@@ -89,6 +89,9 @@ def a_dict(r: servicio.ResultadoTransmision, incluir_contenido: bool = True) -> 
             "bloques_con_errores_corregidos": r.bloques_corregidos,
             "bloques_fallidos": r.bloques_fallidos,
             "estado": r.estado,
+            "empates": r.empates,
+            "bits_decididos": r.bits_decididos,
+            "tasa_empates": r.tasa_empates,
             "t": r.t,
             "tasa": r.parametros["tasa"],
             "capacidad_shannon": r.capacidad,
@@ -136,7 +139,8 @@ def desde_dict(d: dict) -> servicio.ResultadoTransmision:
     return servicio.reconstruir(
         n=n, p=p, origen=origen, texto=texto,
         ber_sin_codigo=float(_exigir(d, "ber_sin_codigo", (int, float))),
-        ber_con_codigo=float(_exigir(d, "ber_con_codigo", (int, float))),
+        ber_con_codigo=(None if d.get("ber_con_codigo", 0) is None
+                        else float(_exigir(d, "ber_con_codigo", (int, float)))),
         id=_exigir(d, "id", int), fecha=fecha, **secuencias)
 
 

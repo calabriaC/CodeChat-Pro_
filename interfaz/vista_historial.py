@@ -79,7 +79,8 @@ class FilaHistorial(QFrame):
         copiar.setCursor(Qt.CursorShape.PointingHandCursor)
 
         def copiar_contenido():
-            QApplication.clipboard().setText(r.texto_recuperado if r.texto is not None else r.recuperado)
+            QApplication.clipboard().setText(r.texto_recuperado if r.texto_recuperado is not None
+                                             else r.recuperado)
             copiar.setIcon(icono("doble_check", C.VERDE, 16))
             QTimer.singleShot(1200, lambda: copiar.setIcon(icono("copiar", C.TEXTO_SECUNDARIO, 16)))
 
@@ -182,13 +183,19 @@ class VistaHistorial(QWidget):
         todos = self.estado.historial
         total = len(todos)
         ok = sum(1 for r in todos if r.exito)
+        ambiguas = sum(1 for r in todos if r.estado == "ambiguo")
+        residuales = sum(1 for r in todos if r.estado == "residual")
         self.k_total.set_valor(str(total) if total else None, "guardadas en este equipo" if total else "")
         self.k_ok.set_valor(str(ok) if total else None, f"{ok / total:.0%} del total" if total else "")
-        self.k_mal.set_valor(str(total - ok) if total else None,
-                             f"{(total - ok) / total:.0%} del total" if total else "")
+        self.k_mal.set_valor(str(residuales) if total else None,
+                             (f"{residuales / total:.0%} del total"
+                              + (f" · {ambiguas} ambigua(s) por empate" if ambiguas else ""))
+                             if total else "")
         if total:
-            self.k_ber.set_valor(formato_ber(sum(r.ber_con_codigo for r in todos) / total),
-                                 "promedio de todas las transmisiones")
+            con_ber = [r.ber_con_codigo for r in todos if r.ber_con_codigo is not None]
+            self.k_ber.set_valor(formato_ber(sum(con_ber) / len(con_ber)) if con_ber else "N/D",
+                                 "promedio de las transmisiones con BER definida"
+                                 + (" (con empates: sobre bits decididos)" if ambiguas else ""))
         else:
             self.k_ber.set_valor(None)
         self.boton_limpiar.setEnabled(bool(total))
@@ -198,7 +205,7 @@ class VistaHistorial(QWidget):
         visibles = [r for r in todos if filtro == 0
                     or (filtro == 1 and r.origen == "chat")
                     or (filtro == 2 and r.origen == "laboratorio")
-                    or (filtro == 3 and not r.exito)]
+                    or (filtro == 3 and r.estado == "residual")]
 
         lay = self.lista.layout_interno
         while lay.count():

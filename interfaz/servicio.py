@@ -31,9 +31,11 @@ with contextlib.redirect_stdout(io.StringIO()):
     from core.simulador import simular_transmision
     from core.experimentos import ejecutar_experimentos
 
-# Solo se ofrecen longitudes impares: el simulador del núcleo rechaza los
-# empates de la decodificación por mayoría que producen las longitudes pares.
-VALORES_N = tuple(range(1, 22, 2))
+# Longitudes seleccionables: todos los enteros de 1 a 21. Con n par pueden
+# producirse empates, que el núcleo representa con '?'.
+VALORES_N = tuple(range(1, 22))
+VALORES_N_IMPARES = tuple(range(1, 22, 2))   # la fórmula teórica Pₑ del núcleo exige n impar
+N_RECOMENDADOS = (3, 5, 7)
 N_POR_DEFECTO = 5
 P_POR_DEFECTO = 0.10
 P_MAXIMA = 0.5
@@ -112,18 +114,60 @@ class ResultadoTransmision:
     recuperado: str
     recibido_sin_codigo: str
     ber_sin_codigo: float
-    ber_con_codigo: float
+    ber_con_codigo: float | None     # None si todos los bits quedaron empatados (N/D)
     parametros: dict
     capacidad: float
     errores_por_bloque: list[int]
     bloque_correcto: list[bool]
     id: int = field(default_factory=_nuevo_id)
     fecha: datetime = field(default_factory=datetime.now)
+    # Métricas de empates tal como las devuelve core.simulador (None si se reconstruyó).
+    metricas_simulador: dict | None = None
+
+    # ---- empates (n par) -------------------------------------------------
+    def _metrica(self, clave: str, respaldo):
+        if self.metricas_simulador and clave in self.metricas_simulador:
+            return self.metricas_simulador[clave]
+        return respaldo()
+
+    @property
+    def empates(self) -> int:
+        """Bits de información sin decisión por empate ('?')."""
+        return self._metrica("empates", lambda: self.recuperado.count("?"))
+
+    @property
+    def bits_decididos(self) -> int:
+        return self._metrica("bits_decididos", lambda: len(self.bits_originales) - self.empates)
+
+    @property
+    def tasa_empates(self) -> float:
+        return self._metrica("tasa_empates", lambda: self.empates / len(self.bits_originales))
+
+    @property
+    def errores_residuales(self) -> int:
+        """Errores entre los bits que sí tuvieron decisión."""
+        return self._metrica("errores_residuales", lambda: sum(
+            a != b for a, b in zip(self.bits_originales, self.recuperado) if b != "?"))
+
+    @property
+    def hay_empates(self) -> bool:
+        return self.empates > 0
+
+    @property
+    def bloque_ambiguo(self) -> list[bool]:
+        return [b == "?" for b in self.recuperado]
+
+    @property
+    def bloques_empatados(self) -> int:
+        return self.empates
 
     # ---- valores derivados para la vista --------------------------------
     @property
     def texto_recuperado(self) -> str | None:
-        return None if self.texto is None else bits_a_texto(self.recuperado)
+        """Texto UTF‑8 recuperado; None si no era texto o si hay bits ambiguos ('?')."""
+        if self.texto is None or self.hay_empates:
+            return None
+        return bits_a_texto(self.recuperado)
 
     @property
     def utf8_valido(self) -> bool:
@@ -155,12 +199,13 @@ class ResultadoTransmision:
 
     @property
     def bloques_fallidos(self) -> int:
-        return sum(1 for ok in self.bloque_correcto if not ok)
+        """Bloques decididos incorrectamente (los empates no cuentan como fallo)."""
+        return sum(1 for ok, b in zip(self.bloque_correcto, self.recuperado) if not ok and b != "?")
 
     @property
     def bits_erroneos(self) -> int:
-        """Bits de información incorrectos tras decodificar."""
-        return sum(a != b for a, b in zip(self.bits_originales, self.recuperado))
+        """Bits de información decididos incorrectamente (excluye los empates '?')."""
+        return self.errores_residuales
 
     @property
     def ber_canal(self) -> float:
@@ -205,13 +250,17 @@ def transmitir(bits: str, n: int, p: float, texto: str | None = None,
         bits_originales=sim["original"], codificado=sim["codificado"],
         recibido=sim["recibido_codificado"], recuperado=sim["recuperado"],
         recibido_sin_codigo=sim["recibido_sin_codigo"],
-        ber_sin_codigo=sim["ber_sin_codigo"], ber_con_codigo=sim["ber_con_codigo"])
+        ber_sin_codigo=sim["ber_sin_codigo"], ber_con_codigo=sim["ber_con_codigo"],
+        metricas_simulador={c: sim[c] for c in
+                            ("empates", "bits_decididos", "tasa_empates", "errores_residuales")
+                            if c in sim})
 
 
 def reconstruir(*, n: int, p: float, origen: str, texto: str | None, bits_originales: str,
                 codificado: str, recibido: str, recuperado: str, recibido_sin_codigo: str,
-                ber_sin_codigo: float, ber_con_codigo: float, id: int | None = None,
-                fecha: datetime | None = None) -> ResultadoTransmision:
+                ber_sin_codigo: float, ber_con_codigo: float | None, id: int | None = None,
+                fecha: datetime | None = None,
+                metricas_simulador: dict | None = None) -> ResultadoTransmision:
     """Crea un ResultadoTransmision a partir de secuencias ya simuladas (p. ej. al cargar JSON).
 
     Los parámetros y la capacidad se vuelven a pedir a `core.matematicas`.
@@ -228,7 +277,8 @@ def reconstruir(*, n: int, p: float, origen: str, texto: str | None, bits_origin
         recuperado=recuperado, recibido_sin_codigo=recibido_sin_codigo,
         ber_sin_codigo=ber_sin_codigo, ber_con_codigo=ber_con_codigo,
         parametros=calcular_parametros(n), capacidad=capacidad_shannon(p),
-        errores_por_bloque=errores, bloque_correcto=correcto, **extra)
+        errores_por_bloque=errores, bloque_correcto=correcto,
+        metricas_simulador=metricas_simulador, **extra)
 
 
 def transmitir_texto(texto: str, n: int, p: float) -> ResultadoTransmision:
@@ -254,7 +304,7 @@ def error_residual(n: int, p: float) -> float:
     return probabilidad_error_residual(n, p)
 
 
-def curva_teorica(p: float, longitudes=VALORES_N) -> list[tuple[float, float]]:
+def curva_teorica(p: float, longitudes=VALORES_N_IMPARES) -> list[tuple[float, float]]:
     """Puntos (R, Pₑ) de la fórmula de error residual del núcleo."""
     return [(calcular_parametros(n)["tasa"], probabilidad_error_residual(n, p)) for n in longitudes]
 

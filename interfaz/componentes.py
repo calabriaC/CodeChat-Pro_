@@ -154,7 +154,9 @@ def formato_p(p: float) -> str:
     return f"{p:.2f}" if round(p, 2) == round(p, 4) else f"{p:.3f}"
 
 
-def formato_ber(valor: float) -> str:
+def formato_ber(valor: float | None) -> str:
+    if valor is None:
+        return "N/D"
     if valor == 0:
         return "0"
     if valor < 0.001:
@@ -430,18 +432,18 @@ class Logo(QWidget):
 # Controles de entrada
 # ===========================================================================
 class SelectorN(QComboBox):
-    """Selector de longitud del código de repetición (solo n impar)."""
+    """Selector de longitud del código de repetición (n = 1 … 21)."""
 
     n_cambiado = Signal(int)
 
     def __init__(self, n: int = servicio.N_POR_DEFECTO, parent=None):
         super().__init__(parent)
         for valor in servicio.VALORES_N:
-            self.addItem(f"{valor}  (sin código)" if valor == 1 else str(valor), valor)
+            self.addItem(str(valor), valor)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMinimumWidth(120)
-        self.setToolTip("Longitud del código de repetición. Solo valores impares:\n"
-                        "la decodificación por mayoría no admite empates.")
+        self.setToolTip("Longitud del código de repetición (1 a 21).\n"
+                        "Con n par puede haber empates: el bit queda como «?».")
         self.set_n(n)
         self.currentIndexChanged.connect(lambda _i: self.n_cambiado.emit(self.n()))
 
@@ -572,7 +574,11 @@ class VisorBits(QTextBrowser):
             if not tramo:
                 return
             texto = "".join(tramo)
-            if estado_tramo:
+            if estado_tramo == "empate":
+                partes.append(
+                    f'<span style="color:{C.AMBAR}; background-color:#3D2E12; '
+                    f'font-weight:700;">{texto}</span>')
+            elif estado_tramo:
                 partes.append(
                     f'<span style="color:{C.ERROR}; background-color:#4A1222; '
                     f'font-weight:700;">{texto}</span>')
@@ -586,7 +592,10 @@ class VisorBits(QTextBrowser):
             if bloque and i and i % bloque == 0:
                 volcar()
                 partes.append(" ")
-            distinto = referencia is not None and i < len(referencia) and referencia[i] != bit
+            if bit == "?":
+                distinto = "empate"
+            else:
+                distinto = referencia is not None and i < len(referencia) and referencia[i] != bit
             if distinto != estado_tramo:
                 volcar()
                 estado_tramo = distinto
@@ -611,6 +620,7 @@ class MapaBloques(QWidget):
         super().__init__(parent)
         self._errores: list[int] = []
         self._correcto: list[bool] = []
+        self._ambiguo: list[bool] = []
         self._seleccion = -1
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._celda, self._hueco = 11, 3
@@ -618,9 +628,11 @@ class MapaBloques(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(30)
 
-    def set_datos(self, errores: list[int], correcto: list[bool]) -> None:
+    def set_datos(self, errores: list[int], correcto: list[bool],
+                  ambiguo: list[bool] | None = None) -> None:
         self._errores = errores[: self.MAX_BLOQUES]
         self._correcto = correcto[: self.MAX_BLOQUES]
+        self._ambiguo = (ambiguo or [False] * len(correcto))[: self.MAX_BLOQUES]
         self._recalcular_alto()
         self.update()
 
@@ -641,7 +653,9 @@ class MapaBloques(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         por_fila, paso = self._por_fila(), self._celda + self._hueco
         for i, (e, ok) in enumerate(zip(self._errores, self._correcto)):
-            if not ok:
+            if i < len(self._ambiguo) and self._ambiguo[i]:
+                color = qcolor(C.AMBAR)
+            elif not ok:
                 color = qcolor(C.ROJO)
             elif e:
                 color = qcolor(C.AZUL, 210)
@@ -677,7 +691,10 @@ class MapaBloques(QWidget):
         i = self._indice_en(event.position())
         if i >= 0:
             e, ok = self._errores[i], self._correcto[i]
-            estado = "decodificación fallida" if not ok else ("corregido" if e else "sin errores")
+            if i < len(self._ambiguo) and self._ambiguo[i]:
+                estado = "empate: decodificación ambigua (?)"
+            else:
+                estado = "decodificación fallida" if not ok else ("corregido" if e else "sin errores")
             QToolTip.showText(event.globalPosition().toPoint(),
                               f"Bloque {i + 1}: {e} bit(s) alterado(s) → {estado}", self)
         else:
@@ -690,7 +707,7 @@ def leyenda_mapa() -> QWidget:
     fila.setContentsMargins(0, 0, 0, 0)
     fila.setSpacing(16)
     for color, texto in ((C.SUPERFICIE_ALTA, "Sin errores"), (C.AZUL, "Corregido"),
-                         (C.ROJO, "Fallido")):
+                         (C.ROJO, "Fallido"), (C.AMBAR, "Empate (ambiguo)")):
         cuadro = QLabel()
         cuadro.setFixedSize(11, 11)
         cuadro.setStyleSheet(f"background:{color}; border-radius:3px;")
@@ -774,14 +791,16 @@ ESTADOS_TRANSMISION = {
                  "La transmisión terminó con {b} bit(s) incorrecto(s) (BER final = {ber}). "
                  "La información recuperada puede estar corrupta."),
     "ambiguo": ("Decodificación ambigua", "aviso", "alerta", C.AMBAR,
-                "Algunos bloques empataron entre unos y ceros y no pudieron decidirse."),
+                "Decodificación ambigua: {emp} bit(s) no pudieron recuperarse por empate (?). "
+                "Entre los {dec} bits decididos hubo {b} error(es) residual(es) "
+                "(BER sobre bits decididos = {ber})."),
 }
 
 
 def descripcion_estado(r: servicio.ResultadoTransmision) -> str:
     return ESTADOS_TRANSMISION[r.estado][4].format(
         e=r.errores_canal, t=r.t, f=r.bloques_fallidos, b=r.bits_erroneos,
-        ber=formato_ber(r.ber_con_codigo))
+        ber=formato_ber(r.ber_con_codigo), emp=r.empates, dec=r.bits_decididos)
 
 
 def resumen_transmision(r: servicio.ResultadoTransmision) -> str:
@@ -798,7 +817,13 @@ def resumen_transmision(r: servicio.ResultadoTransmision) -> str:
             f"El canal BSC (p = {formato_p(r.p)}) invirtió {r.errores_canal} bit(s) "
             f"(BER del canal = {formato_ber(r.ber_canal)}), repartidos en {r.bloques_afectados} "
             f"de {r.total_bloques} bloques.")
-        if r.bloques_fallidos == 0:
+        if r.hay_empates:
+            partes.append(
+                f"{r.empates} bloque(s) quedaron empatados ({r.tasa_empates:.1%} de los bits) y su "
+                f"bit se marca como «?». Entre los {r.bits_decididos} bits decididos hubo "
+                f"{r.errores_residuales} error(es) residual(es) (BER sobre bits decididos = "
+                f"{formato_ber(r.ber_con_codigo)}).")
+        elif r.bloques_fallidos == 0:
             partes.append(f"Todos los bloques afectados tenían como máximo t = {r.t} errores, "
                           "así que la mayoría recuperó cada bit.")
         else:
@@ -810,7 +835,10 @@ def resumen_transmision(r: servicio.ResultadoTransmision) -> str:
     if teorico is not None:
         partes.append(f"Como referencia, la probabilidad teórica de error por bit tras decodificar "
                       f"es Pₑ = {formato_ber(teorico)}; una ejecución concreta puede diferir de ese valor.")
-    if r.texto is not None and not r.utf8_valido:
+    if r.texto is not None and r.hay_empates:
+        partes.append("Decodificación ambigua: algunos bits no pudieron recuperarse, así que el texto "
+                      "no se reconstruye.")
+    elif r.texto is not None and not r.utf8_valido:
         partes.append("Los bytes recuperados no forman UTF‑8 válido: el texto mostrado es corrupto.")
     return " ".join(partes)
 
@@ -950,12 +978,13 @@ def leyenda_bits() -> QWidget:
     fila = FlujoLayout(w, espaciado=14)
     for fondo, color, texto in (("#4A1222", C.ERROR, "Bit invertido por el canal / erróneo tras decodificar"),
                                 (C.CAMPO, C.VERDE, "Bit de información recuperado correctamente"),
-                                (C.CAMPO, "#D3DAEA", "Bit transmitido sin cambios")):
+                                (C.CAMPO, "#D3DAEA", "Bit transmitido sin cambios"),
+                                ("#3D2E12", C.AMBAR, "Bit ambiguo por empate (?)")):
         item = QWidget()
         f = QHBoxLayout(item)
         f.setContentsMargins(0, 0, 0, 0)
         f.setSpacing(6)
-        muestra = QLabel("1")
+        muestra = QLabel("?" if color == C.AMBAR else "1")
         muestra.setAlignment(Qt.AlignmentFlag.AlignCenter)
         muestra.setFixedSize(18, 18)
         muestra.setStyleSheet(f"background:{fondo}; color:{color}; border:1px solid {C.BORDE};"
@@ -994,10 +1023,14 @@ class InspectorBloque(QFrame):
         unos = recibido.count("1")
         ok = r.bloque_correcto[i]
         e = r.errores_por_bloque[i]
-        conclusion = (f"<span style='color:{C.VERDE};'>correcto</span>" if ok
-                      else f"<span style='color:{C.ERROR};'>incorrecto</span>")
-        motivo = (f"{e} ≤ t = {r.t}: la mayoría recupera el bit" if e <= r.t
-                  else f"{e} &gt; t = {r.t}: la mayoría queda del lado equivocado")
+        if r.recuperado[i] == "?":
+            conclusion = f"<span style='color:{C.AMBAR};'>empate: ambiguo</span>"
+            motivo = f"{e}: el bloque quedó con tantos unos como ceros y no hay mayoría"
+        else:
+            conclusion = (f"<span style='color:{C.VERDE};'>correcto</span>" if ok
+                          else f"<span style='color:{C.ERROR};'>incorrecto</span>")
+            motivo = (f"{e} ≤ t = {r.t}: la mayoría recupera el bit" if e <= r.t
+                      else f"{e} &gt; t = {r.t}: la mayoría queda del lado equivocado")
         mono = f"font-family:'{FUENTE_MONO_RESPALDO}';"
         self._texto.setText(
             f"<b style='color:{C.TEXTO};'>Bloque {i + 1} de {r.total_bloques}</b><br>"
@@ -1090,14 +1123,27 @@ class TarjetaDetalleTransmision(QFrame):
             tasas = FlujoLayout(espaciado=8)
             tasas.addWidget(MiniDato("BER antes de decodificar", formato_ber(r.ber_canal), C.AMBAR,
                                      "Medido: bits codificados enviados vs. recibidos"))
-            tasas.addWidget(MiniDato("BER después de decodificar", formato_ber(r.ber_con_codigo),
-                                     C.ERROR if r.ber_con_codigo else C.VERDE,
-                                     "Medido: bits originales vs. bits decodificados"))
+            if r.hay_empates:
+                tasas.addWidget(MiniDato("BER sobre bits decididos", formato_ber(r.ber_con_codigo),
+                                         C.AMBAR,
+                                         "Errores residuales / bits decididos (excluye los empates). "
+                                         "N/D si ningún bit tuvo decisión."))
+                tasas.addWidget(MiniDato("Empates", f"{r.empates} / {len(r.bits_originales)}", C.AMBAR,
+                                         "Bits sin decisión por empate ('?')"))
+                tasas.addWidget(MiniDato("Tasa de empates", f"{r.tasa_empates:.2%}", C.AMBAR))
+                tasas.addWidget(MiniDato("Errores residuales (decididos)", str(r.errores_residuales),
+                                         C.ERROR if r.errores_residuales else C.TEXTO))
+            else:
+                tasas.addWidget(MiniDato("BER después de decodificar", formato_ber(r.ber_con_codigo),
+                                         C.ERROR if r.ber_con_codigo else C.VERDE,
+                                         "Medido: bits originales vs. bits decodificados"))
             tasas.addWidget(MiniDato("BER sin código (referencia)", formato_ber(r.ber_sin_codigo),
                                      ayuda="Medido: el mismo mensaje enviado sin codificar por el canal"))
             teorico = r.error_residual_teorico
-            tasas.addWidget(MiniDato("Pₑ teórico", formato_ber(teorico) if teorico is not None else NO_DISPONIBLE,
-                                     C.MORADO, "Predicción teórica del núcleo, no una medición"))
+            tasas.addWidget(MiniDato("Pₑ teórico", formato_ber(teorico) if teorico is not None else "N/D",
+                                     C.MORADO, "Predicción teórica del núcleo, no una medición"
+                                     if teorico is not None else
+                                     "N/D: la fórmula teórica del núcleo solo está definida para n impar"))
             caja.addLayout(tasas)
         caja.addWidget(separador())
 
@@ -1123,9 +1169,17 @@ class TarjetaDetalleTransmision(QFrame):
         caja.addWidget(SecuenciaBits(
             5, "Bits decodificados por mayoría", r.recuperado, referencia=r.bits_originales,
             bloque=8, color_iguales=C.VERDE,
-            extra=Chip(f"{r.bits_erroneos} erróneos", "error" if r.bits_erroneos else "exito"), **comunes))
+            extra=(Chip(f"{r.bits_erroneos} erróneos · {r.empates} empates", "aviso") if r.hay_empates
+                   else Chip(f"{r.bits_erroneos} erróneos", "error" if r.bits_erroneos else "exito")),
+            **comunes))
 
-        if r.texto is not None:
+        if r.texto is not None and r.hay_empates:
+            contenedor = etiqueta(
+                "Decodificación ambigua: algunos bits no pudieron recuperarse. No se reconstruye el "
+                "texto; la secuencia con los símbolos «?» puede inspeccionarse en el paso 5.",
+                "Etiqueta", ajustar=True)
+            contenedor.setStyleSheet(f"color: {C.AMBAR};")
+        elif r.texto is not None:
             contenedor = QWidget()
             col_rec = QVBoxLayout(contenedor)
             col_rec.setContentsMargins(0, 0, 0, 0)
@@ -1160,7 +1214,7 @@ class TarjetaDetalleTransmision(QFrame):
         caja.addWidget(separador())
         caja.addWidget(etiqueta("MAPA DE BLOQUES (CLIC PARA INSPECCIONAR)", "Seccion"))
         mapa = MapaBloques()
-        mapa.set_datos(r.errores_por_bloque, r.bloque_correcto)
+        mapa.set_datos(r.errores_por_bloque, r.bloque_correcto, r.bloque_ambiguo)
         caja.addWidget(mapa)
         caja.addWidget(leyenda_mapa())
         if r.total_bloques > MapaBloques.MAX_BLOQUES:

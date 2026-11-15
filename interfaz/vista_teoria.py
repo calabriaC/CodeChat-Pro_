@@ -16,9 +16,9 @@ from interfaz.iconos import icono
 
 # (clave, símbolo, nombre, fórmula en HTML, descripción, color)
 CONCEPTOS = [
-    ("n", "<i>n</i>", "Longitud del código", "<i>n</i> ∈ {1, 3, 5, …, 21}",
-     "Número de bits que se transmiten por cada bit de información. En esta versión solo se "
-     "usan valores impares, para que la mayoría nunca empate.", C.ROJO),
+    ("n", "<i>n</i>", "Longitud del código", "<i>n</i> ∈ {1, 2, 3, …, 21}",
+     "Número de bits que se transmiten por cada bit de información. Con n impar la mayoría nunca "
+     "empata; con n par un bloque puede quedar empatado y su bit se marca como «?».", C.ROJO),
     ("k", "<i>k</i>", "Dimensión", "<i>k</i> = 1",
      "Bits de información por palabra código: el código de repetición transporta un único bit.", C.ROJO),
     ("M", "<i>M</i>", "Número de palabras código", "<i>M</i> = 2<sup><i>k</i></sup> = 2",
@@ -43,8 +43,10 @@ CONCEPTOS = [
      "P(<i>y</i> ≠ <i>x</i>) = <i>p</i>,  0 ≤ <i>p</i> ≤ 0.5",
      "Cada bit se invierte de forma independiente con probabilidad p, sea 0 o 1.", C.AMBAR),
     ("maj", "maj", "Decodificación por mayoría",
-     "<i>x̂</i> = 1 si #unos &gt; #ceros;  <i>x̂</i> = 0 si #ceros &gt; #unos",
-     "Cada bloque de n bits recibidos se decide por el valor más frecuente. Con n impar no hay empates.",
+     "<i>x̂</i> = 1 si #unos &gt; #ceros;  <i>x̂</i> = 0 si #ceros &gt; #unos;  <i>x̂</i> = ? si empatan",
+     "Cada bloque de n bits recibidos se decide por el valor más frecuente. Con n impar no hay "
+     "empates; con n par, si hay tantos unos como ceros, el bit queda ambiguo («?»): no es un "
+     "acierto ni se cuenta como bit incorrecto.",
      C.AZUL),
     ("BER", "BER", "Tasa de error de bits",
      "BER = bits erróneos / bits comparados",
@@ -241,14 +243,20 @@ class EjemploMayoria(Tarjeta):
         errores = sum(b.isChecked() for b in self._celdas)
         unos = recibido.count("1")
         acierto = decision == original
-        color = C.VERDE if acierto else C.ERROR
-        explicacion = (f"{errores} ≤ t = {t}: la mayoría sigue representando el bit enviado."
-                       if errores <= t else
-                       f"{errores} &gt; t = {t}: la mayoría queda del lado equivocado.")
+        if decision == "?":
+            color, veredicto = C.AMBAR, "ambigua: empate"
+            explicacion = (f"{errores} &gt; t = {t}, y el bloque quedó con {unos} unos y {n - unos} "
+                           "ceros: no hay mayoría, el bit no puede decidirse.")
+        else:
+            color = C.VERDE if acierto else C.ERROR
+            veredicto = "correcta" if acierto else "incorrecta"
+            explicacion = (f"{errores} ≤ t = {t}: la mayoría sigue representando el bit enviado."
+                           if errores <= t else
+                           f"{errores} &gt; t = {t}: la mayoría queda del lado equivocado.")
         self.resultado.setText(
             f"Recibido <b style=\"font-family:'{FUENTE_MONO_RESPALDO}';\">{recibido}</b> → "
             f"{unos} uno(s) y {n - unos} cero(s) → decisión <b>{decision}</b> "
-            f"<span style='color:{color};'>({'correcta' if acierto else 'incorrecta'})</span>.<br>"
+            f"<span style='color:{color};'>({veredicto})</span>.<br>"
             f"<span style='color:{C.TEXTO_SECUNDARIO};'>Bits invertidos: {explicacion}</span>")
 
 
@@ -333,7 +341,8 @@ class VistaTeoria(QWidget):
             "p": f"Actual: p = {ps}",
             "maj": f"Bloques de {n} bit(s)",
             "BER": ber,
-            "Pe": f"n = {n}, p = {ps}: Pₑ = {formato_ber(servicio.error_residual(n, p))}",
+            "Pe": (f"n = {n}, p = {ps}: Pₑ = {formato_ber(servicio.error_residual(n, p))}"
+                   if n % 2 else f"N/D para n = {n}: la fórmula del núcleo requiere n impar"),
             "H2": f"p = {ps}: H₂ = {servicio.entropia(p):.4f}",
             "C": f"p = {ps}: C = {servicio.capacidad(p):.4f}",
         }

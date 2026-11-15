@@ -1,7 +1,10 @@
 """Ventana principal de CodeChat Pro."""
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QIcon, QKeySequence, QShortcut
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QMainWindow, QStackedWidget, QWidget
+from PySide6.QtWidgets import (
+    QApplication, QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QWidget,
+)
 
 from interfaz.barra_lateral import BarraLateral
 from interfaz.componentes import pixmap_logo
@@ -15,14 +18,14 @@ from interfaz.vista_teoria import VistaTeoria
 
 
 class VentanaPrincipal(QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, almacen=None):
         super().__init__(parent)
         self.setWindowTitle("CodeChat Pro")
         self.setWindowIcon(QIcon(pixmap_logo(64)))
         self.resize(1440, 850)
         self.setMinimumSize(1240, 700)
 
-        self.estado = EstadoApp(self)
+        self.estado = EstadoApp(self, almacen=almacen)
 
         raiz = QWidget()
         raiz.setObjectName("Raiz")
@@ -51,7 +54,12 @@ class VentanaPrincipal(QMainWindow):
         self.estado.configuracion_cambiada.connect(self.barra.tarjeta_codigo.actualizar)
         self.estado.transmision_registrada.connect(lambda _r: self._actualizar_insignia())
         self.estado.historial_limpiado.connect(self._actualizar_insignia)
+        self.estado.aviso_persistencia.connect(self._avisar)
         self.barra.tarjeta_codigo.actualizar(self.estado.n, self.estado.p)
+        self._actualizar_insignia()
+        if self.estado.error_carga:
+            # Se informa cuando la ventana ya es visible.
+            QTimer.singleShot(300, lambda: self._avisar(self.estado.error_carga))
 
         # Atajos Ctrl+1 … Ctrl+5
         for i in range(self.paginas.count()):
@@ -62,6 +70,9 @@ class VentanaPrincipal(QMainWindow):
         self.barra.seleccionar(indice)
         if indice == 0:
             self.vista_chat.entrada.setFocus()
+
+    def _avisar(self, mensaje: str) -> None:
+        QMessageBox.warning(self, "Historial", mensaje)
 
     def _actualizar_insignia(self) -> None:
         self.barra.botones[4].set_insignia(len(self.estado.historial))

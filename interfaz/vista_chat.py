@@ -203,7 +203,9 @@ class BurbujaReceptor(_ConTextoAjustable, QFrame):
 
         cab = QHBoxLayout()
         cab.setSpacing(10)
-        cab.addWidget(etiqueta("Receptor · mensaje recuperado", "AutorBurbuja"))
+        titulo = ("Receptor · mensaje recuperado" if r.exito
+                  else "Receptor · mensaje con errores residuales")
+        cab.addWidget(etiqueta(titulo, "AutorBurbuja"))
         cab.addStretch(1)
         cab.addWidget(ChipEstado(r.estado))
         caja.addLayout(cab)
@@ -215,10 +217,29 @@ class BurbujaReceptor(_ConTextoAjustable, QFrame):
         lbl.setWordWrap(True)
         lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         caja.addWidget(lbl)
-        if hay_diferencias:
-            nota = etiqueta("Los fragmentos resaltados no coinciden con el mensaje enviado.",
-                            "EtiquetaTenue", ajustar=True)
-            caja.addWidget(nota)
+        if not r.exito:
+            aviso = QFrame()
+            aviso.setObjectName("AvisoResidual")
+            aviso.setStyleSheet(f"QFrame#AvisoResidual {{ background: {rgba(C.ERROR, 0.10)};"
+                                f" border: 1px solid {rgba(C.ERROR, 0.35)}; border-radius: 8px; }}")
+            col = QVBoxLayout(aviso)
+            col.setContentsMargins(10, 8, 10, 8)
+            col.setSpacing(3)
+            if not r.utf8_valido:
+                titulo_aviso = etiqueta("⚠ Mensaje corrupto", "Etiqueta")
+                titulo_aviso.setStyleSheet(f"color: {C.ERROR}; font-weight: 700;")
+                col.addWidget(titulo_aviso)
+            texto_aviso = (f"La transmisión terminó con {r.bits_erroneos} bit(s) incorrecto(s) "
+                           f"(BER final = {formato_ber(r.ber_con_codigo)}). "
+                           "La información recuperada puede estar corrupta.")
+            if not r.utf8_valido:
+                texto_aviso += " Los bytes recibidos no forman UTF‑8 válido (se muestran como «�»)."
+            elif hay_diferencias:
+                texto_aviso += " Los fragmentos resaltados difieren del mensaje enviado."
+            detalle = etiqueta(texto_aviso, "EtiquetaSecundaria", ajustar=True)
+            detalle.setStyleSheet(f"color: {C.TEXTO};")
+            col.addWidget(detalle)
+            caja.addWidget(aviso)
 
         pie = QHBoxLayout()
         pie.setSpacing(8)

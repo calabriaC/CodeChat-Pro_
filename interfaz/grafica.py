@@ -37,7 +37,7 @@ class _LienzoLog(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
         self._mensaje_vacio = "Sin datos"
-        self._titulo_y = "BER"
+        self._titulo_y = "BER (escala log)"
         self._titulo_x = ""
         self._ymin, self._ymax = -4, 0
         self._hover: tuple | None = None   # (QPointF, texto)
@@ -108,6 +108,14 @@ class _LienzoLog(QWidget):
             if forma == "barra":
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QColor(color))
+                p.drawRoundedRect(QRectF(x + 2, y - 5, 14, 10), 2, 2)
+            elif forma == "hueco":
+                p.setPen(QPen(QColor(color), 1.6))
+                p.setBrush(QColor(C.PANEL))
+                p.drawEllipse(QPointF(x + 9, y), 4, 4)
+            elif forma == "barra_cero":
+                p.setPen(QPen(QColor(color), 1.2, Qt.PenStyle.DashLine))
+                p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawRoundedRect(QRectF(x + 2, y - 5, 14, 10), 2, 2)
             elif forma == "vertical":
                 p.setPen(QPen(QColor(color), 1.6, Qt.PenStyle.DotLine))
@@ -248,6 +256,8 @@ class GraficaBER(_LienzoLog):
                     (q, f"{s.nombre}{' · ' + etiqueta if etiqueta else ''}\nR = {x:.3f}\nBER = {texto_y}"))
 
         items = [(s.nombre, s.color, "linea" if s.tipo == "linea" else "puntos") for s in self._series]
+        if any(y <= 0 for s in self._series for _, y in s.puntos):
+            items.append(("BER = 0 (dibujado en el borde inferior)", C.TEXTO_SECUNDARIO, "hueco"))
         if self._vertical:
             items.append((f"Capacidad C = {self._vertical[0]:.3f}", C.VERDE, "vertical"))
         self._pintar_leyenda(p, area, items)
@@ -283,6 +293,7 @@ class GraficaBarras(_LienzoLog):
         area = self._area()
         self._pintar_ejes_y(p, area)
 
+        hay_ceros = False
         ancho_grupo = area.width() / len(self._grupos)
         ancho_barra = min(34.0, ancho_grupo * 0.7 / len(self._series))
         for g, nombre_grupo in enumerate(self._grupos):
@@ -291,11 +302,23 @@ class GraficaBarras(_LienzoLog):
             for s, (nombre, color, valores) in enumerate(self._series):
                 valor = valores[g]
                 x = inicio + s * ancho_barra
-                y = self._y(valor, area)
-                rect = QRectF(x + 2, y, ancho_barra - 4, max(2.0, area.bottom() - y))
-                p.setPen(Qt.PenStyle.NoPen)
-                p.setBrush(QColor(color))
-                p.drawRoundedRect(rect, 3, 3)
+                if valor <= 0:
+                    # Convención explícita: BER = 0 no tiene altura en escala log.
+                    rect = QRectF(x + 2, area.bottom() - 8, ancho_barra - 4, 8)
+                    p.setPen(QPen(QColor(color), 1.2, Qt.PenStyle.DashLine))
+                    p.setBrush(Qt.BrushStyle.NoBrush)
+                    p.drawRoundedRect(rect, 2, 2)
+                    p.setFont(fuente(8, QFont.Weight.Bold))
+                    p.setPen(QColor(color))
+                    p.drawText(QRectF(rect.left() - 6, rect.top() - 16, rect.width() + 12, 14),
+                               Qt.AlignmentFlag.AlignCenter, "0")
+                    hay_ceros = True
+                else:
+                    y = self._y(valor, area)
+                    rect = QRectF(x + 2, y, ancho_barra - 4, max(2.0, area.bottom() - y))
+                    p.setPen(Qt.PenStyle.NoPen)
+                    p.setBrush(QColor(color))
+                    p.drawRoundedRect(rect, 3, 3)
                 texto = "0" if valor <= 0 else f"{valor:.3e}" if valor < 1e-3 else f"{valor:.4f}"
                 self._objetivos.append((QPointF(rect.center().x(), rect.top()),
                                         f"{nombre_grupo} · {nombre}\nBER = {texto}"))
@@ -304,6 +327,9 @@ class GraficaBarras(_LienzoLog):
             p.drawText(QRectF(centro - 50, area.bottom() + 6, 100, 16),
                        Qt.AlignmentFlag.AlignCenter, nombre_grupo)
 
-        self._pintar_leyenda(p, area, [(n, c, "barra") for n, c, _ in self._series])
+        items = [(n, c, "barra") for n, c, _ in self._series]
+        if hay_ceros:
+            items.append(("BER = 0 (sin altura en escala log)", C.TEXTO_SECUNDARIO, "barra_cero"))
+        self._pintar_leyenda(p, area, items)
         self._pintar_hover(p)
         p.end()

@@ -33,8 +33,8 @@ class C:
     TEXTO = "#F5F7FF"
     TEXTO_SECUNDARIO = "#A3ADBF"
     TEXTO_TENUE = "#717B90"
-    BORDE = "#2A3040"
-    BORDE_SUAVE = "#222838"
+    BORDE = "#242B3A"
+    BORDE_SUAVE = "#1F2533"
 
 
 def qcolor(hex_color: str, alfa: int = 255) -> QColor:

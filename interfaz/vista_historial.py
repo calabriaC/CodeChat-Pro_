@@ -1,25 +1,23 @@
 """Historial: transmisiones realizadas durante la sesión."""
 
-from PySide6.QtCore import Qt
-from PySide6.QtCore import QTimer
+from datetime import datetime
+from pathlib import Path
+
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QStackedWidget,
-    QVBoxLayout, QWidget,
+    QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QMenu, QMessageBox, QPushButton,
+    QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from interfaz.componentes import (
-    AreaDesplazable, Chip, ChipEstado, ControlSegmentado, DialogoDetalle, EncabezadoPagina, EstadoVacio,
+    AreaDesplazable, Chip, ChipEstado, ControlSegmentado, EtiquetaRecortada, DialogoDetalle, EncabezadoPagina, EstadoVacio,
     TarjetaMetrica, etiqueta, formato_ber, formato_p,
 )
+from interfaz import persistencia
 from interfaz.estado import EstadoApp
 from interfaz.estilos import C, rgba
 from interfaz.iconos import icono, pixmap
 
-_ESTADOS = {
-    "sin_errores": ("Sin errores en el canal", "exito"),
-    "corregido": ("Errores corregidos", "exito"),
-    "residual": ("Errores residuales", "error"),
-}
 _MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
 
@@ -66,7 +64,7 @@ class FilaHistorial(QFrame):
         ber.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         fila.addWidget(ber)
         contenedor_estado = QWidget()
-        contenedor_estado.setFixedWidth(200)
+        contenedor_estado.setFixedWidth(184)
         ce = QHBoxLayout(contenedor_estado)
         ce.setContentsMargins(0, 0, 0, 0)
         ce.addWidget(ChipEstado(r.estado))
@@ -107,7 +105,19 @@ class VistaHistorial(QWidget):
         caja.setContentsMargins(0, 0, 0, 0)
         caja.setSpacing(0)
         cab = EncabezadoPagina("historial", "Historial",
-                               "Transmisiones realizadas durante esta sesión")
+                               "Transmisiones guardadas automáticamente en este equipo")
+        self.boton_exportar = QPushButton("  Exportar JSON")
+        self.boton_exportar.setObjectName("BotonPrimario")
+        self.boton_exportar.setIcon(icono("descargar", C.TEXTO, 16))
+        self.boton_exportar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.boton_exportar.setToolTip("Guardar una copia del historial en un archivo JSON")
+        menu = QMenu(self.boton_exportar)
+        menu.addAction("Historial completo (incluye mensajes y bits)…",
+                       lambda: self._exportar(incluir_contenido=True))
+        menu.addAction("Solo métricas (sin el contenido de los mensajes)…",
+                       lambda: self._exportar(incluir_contenido=False))
+        self.boton_exportar.setMenu(menu)
+        cab.agregar(self.boton_exportar)
         self.boton_limpiar = QPushButton("  Limpiar historial")
         self.boton_limpiar.setIcon(icono("papelera", C.TEXTO_SECUNDARIO, 16))
         self.boton_limpiar.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -132,7 +142,12 @@ class VistaHistorial(QWidget):
         fila_filtro = QHBoxLayout()
         self.filtro = ControlSegmentado(self.FILTROS)
         fila_filtro.addWidget(self.filtro)
-        fila_filtro.addStretch(1)
+        fila_filtro.addSpacing(16)
+        ruta = EtiquetaRecortada(f"Almacenamiento local: {estado.almacen.ruta}", "EtiquetaTenue")
+        ruta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        ruta.setToolTip(f"{estado.almacen.ruta}\n\nLos registros nunca salen de este equipo: "
+                        "no hay servicios externos ni telemetría.")
+        fila_filtro.addWidget(ruta, 1)
         cuerpo.addLayout(fila_filtro)
 
         self.pila = QStackedWidget()
@@ -155,7 +170,9 @@ class VistaHistorial(QWidget):
             return
         respuesta = QMessageBox.question(
             self, "Limpiar historial",
-            "¿Eliminar todas las transmisiones registradas en esta sesión?",
+            "¿Eliminar todas las transmisiones guardadas?\n\n"
+            "Se borrarán de la aplicación y del archivo de historial local. "
+            "Las copias exportadas no se modifican.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if respuesta == QMessageBox.StandardButton.Yes:
@@ -165,7 +182,7 @@ class VistaHistorial(QWidget):
         todos = self.estado.historial
         total = len(todos)
         ok = sum(1 for r in todos if r.exito)
-        self.k_total.set_valor(str(total) if total else None, "en esta sesión" if total else "")
+        self.k_total.set_valor(str(total) if total else None, "guardadas en este equipo" if total else "")
         self.k_ok.set_valor(str(ok) if total else None, f"{ok / total:.0%} del total" if total else "")
         self.k_mal.set_valor(str(total - ok) if total else None,
                              f"{(total - ok) / total:.0%} del total" if total else "")
@@ -175,6 +192,7 @@ class VistaHistorial(QWidget):
         else:
             self.k_ber.set_valor(None)
         self.boton_limpiar.setEnabled(bool(total))
+        self.boton_exportar.setEnabled(bool(total))
 
         filtro = self.filtro.indice()
         visibles = [r for r in todos if filtro == 0
@@ -199,3 +217,24 @@ class VistaHistorial(QWidget):
             lay.addWidget(FilaHistorial(r))
         lay.addStretch(1)
         self.pila.setCurrentWidget(self.lista)
+
+    def _exportar(self, incluir_contenido: bool) -> None:
+        registros = self.estado.historial
+        if not registros:
+            return
+        sufijo = "" if incluir_contenido else "-metricas"
+        sugerido = Path.home() / f"codechat-historial{sufijo}-{datetime.now():%Y%m%d-%H%M}.json"
+        ruta, _ = QFileDialog.getSaveFileName(self, "Exportar historial", str(sugerido),
+                                              "Archivos JSON (*.json)")
+        if not ruta:
+            return
+        if not ruta.lower().endswith(".json"):
+            ruta += ".json"
+        try:
+            cantidad = persistencia.exportar(Path(ruta), registros, incluir_contenido)
+        except OSError as e:
+            QMessageBox.critical(self, "Exportar JSON", f"No se pudo guardar el archivo:\n{e}")
+            return
+        detalle = "" if incluir_contenido else " (solo métricas, sin el contenido de los mensajes)"
+        QMessageBox.information(self, "Exportar JSON",
+                                f"Se exportaron {cantidad} registro(s){detalle} a:\n{ruta}")

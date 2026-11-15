@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
-    QGridLayout, QHBoxLayout, QPlainTextEdit, QPushButton, QSpinBox, QStackedWidget,
+    QFrame, QGridLayout, QHBoxLayout, QPlainTextEdit, QPushButton, QSpinBox, QStackedWidget,
     QVBoxLayout, QWidget,
 )
 
@@ -18,6 +18,73 @@ from interfaz.iconos import icono
 
 MAX_BITS = 20000
 MAX_CARACTERES = 500
+
+
+class TablaComparacion(Tarjeta):
+    """Medición experimental frente a predicción teórica, claramente separadas."""
+
+    def __init__(self, parent=None):
+        super().__init__("Teoría frente a experimento", "analisis",
+                         "Las mediciones dependen del azar del canal; las predicciones, solo de n y p",
+                         parent=parent)
+        fila = QHBoxLayout()
+        fila.setSpacing(14)
+        self._exp = self._columna(fila, "MEDICIÓN EXPERIMENTAL (ESTA EJECUCIÓN)", C.AMBAR, [
+            ("ber_sin", "BER sin código", "El mismo mensaje enviado sin codificar"),
+            ("ber_canal", "BER antes de decodificar", "Bits codificados enviados vs. recibidos"),
+            ("ber_con", "BER después de decodificar", "Bits originales vs. bits decodificados"),
+        ])
+        self._teo = self._columna(fila, "PREDICCIÓN TEÓRICA (NÚCLEO)", C.MORADO, [
+            ("pe", "Pₑ residual teórico", "Suma de C(n,i)·p^i·(1−p)^(n−i) para i > t"),
+            ("t", "Capacidad de corrección t", "⌊(d_min − 1)/2⌋"),
+            ("r", "Tasa R = k/n", "Información útil por bit transmitido"),
+            ("c", "Capacidad de Shannon C", "1 − H₂(p): límite teórico de tasa fiable"),
+        ])
+        self.cuerpo.addLayout(fila)
+        self.nota = etiqueta("", "Ayuda", ajustar=True)
+        self.cuerpo.addWidget(self.nota)
+
+    def _columna(self, fila, titulo, color, filas):
+        marco = QFrame()
+        marco.setObjectName("TarjetaInterna")
+        marco.setStyleSheet(f"QFrame#TarjetaInterna {{ border-top: 3px solid {color}; }}")
+        rej = QGridLayout(marco)
+        rej.setContentsMargins(14, 12, 14, 12)
+        rej.setHorizontalSpacing(12)
+        rej.setVerticalSpacing(8)
+        cab = etiqueta(titulo, "Seccion")
+        cab.setStyleSheet(f"color: {color};")
+        rej.addWidget(cab, 0, 0, 1, 2)
+        valores = {}
+        for i, (clave, nombre, ayuda) in enumerate(filas, 1):
+            lbl = etiqueta(nombre, "EtiquetaSecundaria")
+            lbl.setToolTip(ayuda)
+            rej.addWidget(lbl, i, 0)
+            v = etiqueta("—", "Mono")
+            v.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            rej.addWidget(v, i, 1)
+            valores[clave] = v
+        rej.setColumnStretch(0, 1)
+        rej.setRowStretch(len(filas) + 1, 1)
+        fila.addWidget(marco, 1)
+        return valores
+
+    def mostrar(self, r: servicio.ResultadoTransmision) -> None:
+        self._exp["ber_sin"].setText(formato_ber(r.ber_sin_codigo))
+        self._exp["ber_canal"].setText(formato_ber(r.ber_canal))
+        self._exp["ber_con"].setText(formato_ber(r.ber_con_codigo))
+        pe = r.error_residual_teorico
+        self._teo["pe"].setText(formato_ber(pe) if pe is not None else "No disponible")
+        self._teo["t"].setText(str(r.t))
+        self._teo["r"].setText(f"{r.parametros['tasa']:.4f}")
+        self._teo["c"].setText(f"{r.capacidad:.4f}")
+        self.nota.setText(
+            f"Con {len(r.bits_originales)} bits, la BER medida es una estimación sujeta a variación "
+            "aleatoria y no tiene por qué coincidir con Pₑ. "
+            + ("La tasa R supera la capacidad C: según Shannon, a esa tasa no puede lograrse una "
+               "comunicación arbitrariamente fiable." if r.parametros["tasa"] > r.capacidad else
+               "La tasa R está por debajo de C; aun así, C es un límite teórico para códigos óptimos, "
+               "no una garantía de ausencia de errores para este código ni para una ejecución concreta."))
 
 
 class VistaLaboratorio(QWidget):
@@ -88,6 +155,14 @@ class VistaLaboratorio(QWidget):
         self.boton_ejecutar.setIconSize(QSize(18, 18))
         self.boton_ejecutar.setCursor(Qt.CursorShape.PointingHandCursor)
         c.addWidget(self.boton_ejecutar)
+        self.boton_repetir = QPushButton("  Repetir experimento")
+        self.boton_repetir.setIcon(icono("aleatorio", C.TEXTO, 16))
+        self.boton_repetir.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.boton_repetir.setToolTip("Vuelve a transmitir la misma entrada con los mismos n y p.\n"
+                                      "El canal es aleatorio: el resultado puede cambiar.")
+        self.boton_repetir.setEnabled(False)
+        c.addWidget(self.boton_repetir)
+        self._ultima: tuple | None = None
         self.error = etiqueta("", "Error", ajustar=True)
         self.error.hide()
         c.addWidget(self.error)
@@ -109,20 +184,19 @@ class VistaLaboratorio(QWidget):
         self.pila.addWidget(self.resultados)
         cuerpo.addWidget(self.pila, 1)
 
+        # Resumen compacto (las etapas se ven en el panel inferior)
         rejilla = QGridLayout()
         rejilla.setSpacing(12)
         self.m_bits = TarjetaMetrica("Bits de información", C.MORADO)
         self.m_trans = TarjetaMetrica("Bits transmitidos", C.AZUL)
         self.m_alterados = TarjetaMetrica("Alterados por el canal", C.AMBAR)
-        self.m_corregidos = TarjetaMetrica("Bloques corregidos", C.AZUL)
         self.m_fallidos = TarjetaMetrica("Bloques fallidos", C.ROJO)
-        self.m_ber_sin = TarjetaMetrica("BER sin código", C.ROJO)
-        self.m_ber_con = TarjetaMetrica("BER con código", C.VERDE)
-        self.m_cap = TarjetaMetrica("Capacidad C(p)", C.VERDE, "C = 1 − H₂(p)")
-        for i, m in enumerate([self.m_bits, self.m_trans, self.m_alterados, self.m_corregidos,
-                               self.m_fallidos, self.m_ber_sin, self.m_ber_con, self.m_cap]):
-            rejilla.addWidget(m, i // 4, i % 4)
+        for i, m in enumerate([self.m_bits, self.m_trans, self.m_alterados, self.m_fallidos]):
+            rejilla.addWidget(m, 0, i)
         self.resultados.layout_interno.addLayout(rejilla)
+
+        self.comparacion = TablaComparacion()
+        self.resultados.layout_interno.addWidget(self.comparacion)
         self._detalle: QWidget | None = None
         self.resultados.layout_interno.addStretch(1)
 
@@ -130,6 +204,7 @@ class VistaLaboratorio(QWidget):
         self.modo.cambiado.connect(self._cambiar_modo)
         boton_aleatorio.clicked.connect(self._generar)
         self.boton_ejecutar.clicked.connect(self.ejecutar)
+        self.boton_repetir.clicked.connect(self.repetir)
         self.selector_n.n_cambiado.connect(lambda _n: self._actualizar_info())
         self.control_p.valor_cambiado.connect(lambda _p: self._actualizar_info())
         self.entrada.textChanged.connect(self._actualizar_info)
@@ -190,13 +265,23 @@ class VistaLaboratorio(QWidget):
         if len(bits) > MAX_BITS:
             self._mostrar_error(f"La secuencia supera los {MAX_BITS} bits.")
             return
-        n, p = self.selector_n.n(), self.control_p.valor()
+        self._transmitir(bits, texto, self.selector_n.n(), self.control_p.valor())
+
+    def repetir(self) -> None:
+        """Repite con la misma entrada y los mismos parámetros (el canal sigue siendo aleatorio)."""
+        if self._ultima is not None:
+            self._transmitir(*self._ultima)
+
+    def _transmitir(self, bits: str, texto: str | None, n: int, p: float) -> None:
         try:
             r = servicio.transmitir(bits, n, p, texto=texto, origen="laboratorio")
         except (ValueError, TypeError) as error:
             self._mostrar_error(str(error))
             return
         self._mostrar_error("")
+        self._ultima = (bits, texto, n, p)
+        self.boton_repetir.setEnabled(True)
+        self.boton_repetir.setText(f"  Repetir experimento (n = {n}, p = {formato_p(p)})")
         self.estado.registrar(r)
         self._mostrar(r)
 
@@ -204,17 +289,15 @@ class VistaLaboratorio(QWidget):
         self.m_bits.set_valor(str(len(r.bits_originales)))
         self.m_trans.set_valor(str(len(r.codificado)), f"R = {r.parametros['tasa']:.3f}")
         self.m_alterados.set_valor(str(r.errores_canal),
-                                   f"{r.errores_canal / len(r.codificado):.2%} de los bits enviados")
-        self.m_corregidos.set_valor(str(r.bloques_corregidos), f"de {r.total_bloques} bloques")
-        self.m_fallidos.set_valor(str(r.bloques_fallidos), f"más de t = {r.t} errores")
-        self.m_ber_sin.set_valor(formato_ber(r.ber_sin_codigo), "misma entrada sin codificar")
-        self.m_ber_con.set_valor(formato_ber(r.ber_con_codigo), f"n = {r.n}, p = {formato_p(r.p)}")
-        self.m_cap.set_valor(f"{r.capacidad:.3f}", "bits por uso del canal")
+                                   f"en {r.bloques_afectados} de {r.total_bloques} bloques")
+        self.m_fallidos.set_valor(str(r.bloques_fallidos),
+                                  f"{r.bloques_corregidos} bloque(s) con errores corregidos")
+        self.comparacion.mostrar(r)
 
         lay = self.resultados.layout_interno
         if self._detalle is not None:
             lay.removeWidget(self._detalle)
             self._detalle.deleteLater()
-        self._detalle = TarjetaDetalleTransmision(r, compacta=False)
+        self._detalle = TarjetaDetalleTransmision(r, compacta=False, mostrar_metricas=False)
         lay.insertWidget(lay.count() - 1, self._detalle)
         self.pila.setCurrentWidget(self.resultados)

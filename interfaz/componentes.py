@@ -8,7 +8,7 @@ import math
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath, QPen,
-    QPixmap, QTextOption,
+    QPixmap, QRadialGradient, QTextOption,
 )
 from PySide6.QtWidgets import (
     QAbstractButton, QApplication, QButtonGroup, QComboBox, QDialog, QDoubleSpinBox, QFrame,
@@ -298,11 +298,11 @@ class BotonNavegacion(QAbstractButton):
         self._insignia = 0
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(50)
+        self.setMinimumHeight(56)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def sizeHint(self) -> QSize:
-        return QSize(220, 50)
+        return QSize(220, 56)
 
     def set_insignia(self, valor: int) -> None:
         self._insignia = valor
@@ -346,12 +346,12 @@ class BotonNavegacion(QAbstractButton):
             p.drawRoundedRect(r, 12, 12)
 
         color = C.TEXTO if (activo or self._hover) else C.TEXTO_SECUNDARIO
-        p.drawPixmap(QPointF(r.left() + 22, r.center().y() - 11), pixmap(self._icono, color, 22))
+        p.drawPixmap(QPointF(r.left() + 22, r.center().y() - 12), pixmap(self._icono, color, 24))
 
-        f = fuente(11.5, QFont.Weight.DemiBold if activo else QFont.Weight.Medium)
+        f = fuente(12, QFont.Weight.DemiBold if activo else QFont.Weight.Medium)
         p.setFont(f)
         p.setPen(QColor(C.TEXTO if activo else color))
-        p.drawText(QRectF(r.left() + 60, r.top(), r.width() - 100, r.height()),
+        p.drawText(QRectF(r.left() + 64, r.top(), r.width() - 100, r.height()),
                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self.text())
 
         if self._insignia:
@@ -380,58 +380,76 @@ def _ruta_globo(r: QRectF) -> QPainterPath:
     return ruta.united(cola)
 
 
-def pintar_logo(p: QPainter, r: QRectF, con_texto: bool = True) -> None:
+def _hexagono(c: QPointF, radio: float) -> list[QPointF]:
+    """Vértices de un hexágono con un vértice arriba (vista isométrica de un cubo)."""
+    return [QPointF(c.x() + radio * math.cos(math.radians(a)), c.y() + radio * math.sin(math.radians(a)))
+            for a in (-90, -30, 30, 90, 150, 210)]
+
+
+def _caras_cubo(c: QPointF, radio: float) -> tuple[QPainterPath, QPainterPath, QPainterPath]:
+    v = _hexagono(c, radio)
+    caras = []
+    for puntos in ((v[0], v[1], c, v[5]), (v[5], c, v[3], v[4]), (c, v[1], v[2], v[3])):
+        ruta = QPainterPath(puntos[0])
+        for q in puntos[1:]:
+            ruta.lineTo(q)
+        ruta.closeSubpath()
+        caras.append(ruta)
+    return caras[0], caras[1], caras[2]   # superior, izquierda, derecha
+
+
+def pintar_logo(p: QPainter, r: QRectF, con_texto: bool = False) -> None:
+    """Logotipo geométrico: cubo isométrico rojo con un núcleo hueco."""
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    trazo = max(2.0, r.height() * 0.05)
-    interior = r.adjusted(trazo, trazo, -trazo, -trazo)
-    ruta = _ruta_globo(interior)
+    lado = min(r.width(), r.height())
+    c = r.center()
+    radio = lado * 0.46
 
     # Resplandor discreto
-    for ancho, alfa in ((trazo * 5, 18), (trazo * 3, 35)):
-        p.setPen(QPen(qcolor(C.ROJO, alfa), ancho, Qt.PenStyle.SolidLine,
-                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-        p.setBrush(Qt.BrushStyle.NoBrush)
+    halo = QRadialGradient(c, radio * 1.35)
+    halo.setColorAt(0, qcolor(C.ROJO, 70))
+    halo.setColorAt(1, qcolor(C.ROJO, 0))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(halo)
+    p.drawEllipse(c, radio * 1.35, radio * 1.35)
+
+    superior, izquierda, derecha = _caras_cubo(c, radio)
+    for ruta, claro, oscuro in ((superior, "#FF6B78", C.ROJO), (izquierda, C.ROJO, "#C3283A"),
+                                (derecha, "#B32234", "#7E1424")):
+        grad = QLinearGradient(ruta.boundingRect().topLeft(), ruta.boundingRect().bottomRight())
+        grad.setColorAt(0, QColor(claro))
+        grad.setColorAt(1, QColor(oscuro))
+        p.setBrush(grad)
+        p.setPen(QPen(qcolor("#2A0A10", 160), max(1.0, lado * 0.012)))
         p.drawPath(ruta)
 
-    relleno = QLinearGradient(interior.topLeft(), interior.bottomRight())
-    relleno.setColorAt(0, qcolor(C.ROJO, 60))
-    relleno.setColorAt(1, qcolor(C.ROJO_OSCURO, 25))
-    borde = QLinearGradient(interior.topLeft(), interior.bottomRight())
-    borde.setColorAt(0, QColor(C.ROJO_CLARO))
-    borde.setColorAt(1, QColor(C.ROJO))
-    p.setPen(QPen(QBrush(borde), trazo, Qt.PenStyle.SolidLine,
-                  Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-    p.setBrush(relleno)
-    p.drawPath(ruta)
-
-    if con_texto:
-        f = fuente_mono(10)
-        f.setBold(True)
-        f.setPixelSize(max(8, int(interior.height() * 0.32)))
-        p.setFont(f)
-        p.setPen(QColor(C.TEXTO))
-        p.drawText(QRectF(interior.left(), interior.top(), interior.width(), interior.height() * 0.80),
-                   Qt.AlignmentFlag.AlignCenter, "0101")
+    # Núcleo hueco: un cubo interior oscuro con aristas claras
+    interior = radio * 0.42
+    sup_i, izq_i, der_i = _caras_cubo(c, interior)
+    for ruta, color in ((sup_i, "#3A0E16"), (izq_i, "#26080E"), (der_i, "#1A050A")):
+        p.setBrush(QColor(color))
+        p.setPen(QPen(qcolor("#FFB3BB", 150), max(1.0, lado * 0.018)))
+        p.drawPath(ruta)
 
 
 def pixmap_logo(lado: int = 64) -> QPixmap:
     img = QPixmap(lado * 2, lado * 2)
     img.fill(Qt.GlobalColor.transparent)
     p = QPainter(img)
-    pintar_logo(p, QRectF(4, 10, lado * 2 - 8, lado * 2 - 20), con_texto=True)
+    pintar_logo(p, QRectF(0, 0, lado * 2, lado * 2))
     p.end()
     img.setDevicePixelRatio(2)
     return img
 
 
 class Logo(QWidget):
-    def __init__(self, ancho: int = 92, alto: int = 66, parent=None):
+    def __init__(self, ancho: int = 72, alto: int = 72, parent=None):
         super().__init__(parent)
         self.setFixedSize(ancho, alto)
 
     def paintEvent(self, _event):
         p = QPainter(self)
-        pintar_logo(p, QRectF(self.rect()).adjusted(4, 4, -4, -2))
+        pintar_logo(p, QRectF(self.rect()))
         p.end()
 
 

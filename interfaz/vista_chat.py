@@ -9,19 +9,23 @@ from datetime import datetime
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit,
-    QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QDialog, QFileDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QLabel, QMessageBox,
+    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
-from interfaz import servicio
+from pathlib import Path
+
+from interfaz import persistencia, servicio
 from interfaz.componentes import (
-    ESTADOS_TRANSMISION, AreaDesplazable, Chip, ChipEstado, ControlProbabilidad,
-    EncabezadoPagina, EstadoVacio, SelectorN, Tarjeta, TarjetaDetalleTransmision,
-    TarjetaMetrica, etiqueta, formato_ber, formato_p, icono_label, repulir, texto_ajustable,
+    ESTADOS_TRANSMISION, AreaDesplazable, ControlProbabilidad, EstadoVacio, EtiquetaRecortada,
+    FlujoLayout,
+    SelectorN,
+    TarjetaDetalleTransmision, etiqueta, formato_ber, formato_p, icono_label, pixmap_logo, repulir,
+    separador, texto_ajustable,
 )
 from interfaz.estado import EstadoApp
 from interfaz.estilos import ANCHO_PANEL_DERECHO, C, qcolor, rgba
-from interfaz.grafica import GraficaBER, Serie
+from interfaz.grafica import GraficaBER, GraficaTasas, Serie
 from interfaz.iconos import icono, pixmap
 
 LONGITUD_MAXIMA = 500
@@ -188,74 +192,186 @@ class BurbujaEnviada(_ConTextoAjustable, QFrame):
         self._estado.setToolTip(ayuda)
 
 
-class BurbujaReceptor(_ConTextoAjustable, QFrame):
-    """Mensaje recuperado por el receptor, alineado a la izquierda."""
+def _bits_resumidos(bits: str, n: int, referencia: str | None = None, max_car: int = 34) -> str:
+    """Primeros grupos de una secuencia (HTML), con los bits alterados en rojo y «…» si se recorta."""
+    grupo = n if n > 1 else 8
+    grupos = max(2, max_car // (grupo + 1))
+    limite = min(len(bits), grupos * grupo)
+    partes = []
+    for i in range(0, limite, grupo):
+        trozo = []
+        for j in range(i, min(i + grupo, limite)):
+            b = bits[j]
+            if referencia is not None and j < len(referencia) and referencia[j] != b:
+                trozo.append(f"<span style='color:{C.ERROR}; font-weight:700;'>{b}</span>")
+            else:
+                trozo.append(b)
+        partes.append("".join(trozo))
+    texto = " ".join(partes)
+    return texto + (" …" if limite < len(bits) else "")
+
+
+def _caja_valor(contenido: str, color: str | None = None, envolver: bool = False,
+                fondo: str | None = None, borde: str | None = None) -> QLabel:
+    lbl = QLabel(contenido)
+    lbl.setObjectName("CajaValor")
+    lbl.setTextFormat(Qt.TextFormat.RichText)
+    lbl.setWordWrap(envolver)
+    lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    if not envolver:
+        lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        lbl.setMinimumWidth(90)
+    estilo = []
+    if color:
+        estilo.append(f"color: {color};")
+    if fondo:
+        estilo.append(f"background: {fondo};")
+    if borde:
+        estilo.append(f"border-color: {borde};")
+    if estilo:
+        lbl.setStyleSheet("QLabel#CajaValor { " + " ".join(estilo) + " }")
+    return lbl
+
+
+def _icono_fila(nombre: str, color: str = C.TEXTO_SECUNDARIO) -> QLabel:
+    lbl = QLabel()
+    lbl.setFixedSize(30, 30)
+    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lbl.setPixmap(pixmap(nombre, color, 16))
+    lbl.setStyleSheet(f"background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 8px;")
+    return lbl
+
+
+class _FilaDato(QFrame):
+    """«Etiqueta: valor» compacto del panel de estado."""
+
+    def __init__(self, nombre: str, valor: str, color: str = C.TEXTO, parent=None):
+        super().__init__(parent)
+        self.setObjectName("FilaDato")
+        self.setStyleSheet(f"QFrame#FilaDato {{ background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE};"
+                           " border-radius: 7px; }")
+        fila = QHBoxLayout(self)
+        fila.setContentsMargins(10, 5, 10, 5)
+        fila.setSpacing(8)
+        n = etiqueta(nombre, "EtiquetaSecundaria")
+        n.setStyleSheet("font-size: 12px;")
+        fila.addWidget(n)
+        fila.addStretch(1)
+        v = etiqueta(valor, "Mono")
+        v.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: 700;")
+        fila.addWidget(v)
+
+
+_RESULTADO = {
+    "sin_errores": ("exito", C.VERDE, "Recuperación\ncorrecta"),
+    "corregido": ("exito", C.VERDE, "Recuperación\ncorrecta"),
+    "residual": ("fallo", C.ERROR, "Recuperación\ncon errores"),
+    "ambiguo": ("alerta", C.AMBAR, "Decodificación\nambigua"),
+}
+
+
+class BurbujaReceptor(QFrame):
+    """Tarjeta «Transmisión completada»: etapas del mensaje y estado de la recuperación."""
 
     detalles_alternados = Signal(bool)
 
     def __init__(self, r: servicio.ResultadoTransmision, parent=None):
         super().__init__(parent)
-        self.setObjectName("BurbujaRecibida")
-        self._texto_plano = r.texto_recuperado or ""
+        self.resultado = r
+        self.setObjectName("TarjetaTransmision")
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(16, 11, 14, 9)
-        caja.setSpacing(6)
+        caja.setContentsMargins(18, 14, 18, 12)
+        caja.setSpacing(12)
 
+        # ---- Cabecera --------------------------------------------------
         cab = QHBoxLayout()
         cab.setSpacing(10)
-        titulo = ("Receptor · mensaje recuperado" if r.exito
-                  else "Receptor · decodificación ambigua" if r.hay_empates
-                  else "Receptor · mensaje con errores residuales")
-        cab.addWidget(etiqueta(titulo, "AutorBurbuja"))
+        cab.addWidget(icono_label("antena", C.TEXTO_SECUNDARIO, 22))
+        cab.addWidget(etiqueta("Transmisión completada", "AutorBurbuja"))
         cab.addStretch(1)
-        cab.addWidget(ChipEstado(r.estado))
+        cab.addWidget(etiqueta(_hora(), "HoraBurbuja"))
         caja.addLayout(cab)
 
+        # ---- Cuerpo: etapas + estado -----------------------------------
+        self._cuerpo = cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(12)
+        etapas = QFrame()
+        etapas.setObjectName("PanelEtapas")
+        rej = QGridLayout(etapas)
+        rej.setContentsMargins(14, 12, 14, 12)
+        rej.setHorizontalSpacing(12)
+        rej.setVerticalSpacing(9)
+        rej.setColumnStretch(2, 1)
+
         if r.hay_empates:
-            # No se convierte a UTF‑8 una secuencia con bits ambiguos.
-            contenido, hay_diferencias = "", False
+            contenido_rec, hay_diferencias = "", False
         else:
-            contenido, hay_diferencias = html_recuperado(r.texto or "", r.texto_recuperado or "")
-        self._lbl = lbl = QLabel(contenido or ("" if r.hay_empates else "∅"))
-        lbl.setObjectName("TextoBurbuja")
-        lbl.setTextFormat(Qt.TextFormat.RichText)
-        lbl.setWordWrap(True)
-        lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        caja.addWidget(lbl)
-        lbl.setVisible(bool(lbl.text()))
+            contenido_rec, hay_diferencias = html_recuperado(r.texto or "", r.texto_recuperado or "")
+        estado_ic, color_estado, texto_estado = _RESULTADO[r.estado]
+
+        filas = [
+            ("texto", "Mensaje original:",
+             _caja_valor(f"“{html.escape(texto_ajustable(r.texto or ''))}”", envolver=True)),
+            ("codigo", f"Bits codificados (n = {r.n}, k = {r.parametros['k']}):",
+             _caja_valor(_bits_resumidos(r.codificado, r.n), envolver=True)),
+            ("actividad", f"Bits recibidos (BSC, p = {formato_p(r.p)}):",
+             _caja_valor(_bits_resumidos(r.recibido, r.n, r.codificado), envolver=True)),
+        ]
         if r.hay_empates:
-            aviso = QFrame()
-            aviso.setObjectName("AvisoEmpate")
-            aviso.setStyleSheet(f"QFrame#AvisoEmpate {{ background: {rgba(C.AMBAR, 0.10)};"
-                                f" border: 1px solid {rgba(C.AMBAR, 0.40)}; border-radius: 8px; }}")
-            col = QVBoxLayout(aviso)
-            col.setContentsMargins(10, 8, 10, 8)
-            col.setSpacing(3)
-            titulo_aviso = etiqueta("⚠ Decodificación ambigua: algunos bits no pudieron recuperarse",
-                                    "Etiqueta", ajustar=True)
-            titulo_aviso.setStyleSheet(f"color: {C.AMBAR}; font-weight: 700;")
-            col.addWidget(titulo_aviso)
-            detalle = etiqueta(
+            recuperado = _caja_valor(f"Ambiguo: {r.empates} bit(s) empatados — no se reconstruye el texto",
+                                     C.AMBAR, True, rgba(C.AMBAR, 0.08), rgba(C.AMBAR, 0.35))
+        elif r.exito:
+            recuperado = _caja_valor(f"“{contenido_rec}”", C.VERDE, True, rgba(C.VERDE, 0.08),
+                                     rgba(C.VERDE, 0.35))
+        else:
+            recuperado = _caja_valor(f"“{contenido_rec or '∅'}”", C.TEXTO, True, rgba(C.ERROR, 0.08),
+                                     rgba(C.ERROR, 0.35))
+        filas.append((estado_ic, "Mensaje recuperado:", recuperado))
+        for i, (ic, nombre, valor) in enumerate(filas):
+            rej.addWidget(_icono_fila(ic, color_estado if i == 3 else C.TEXTO_SECUNDARIO), i, 0,
+                          Qt.AlignmentFlag.AlignTop)
+            lbl = etiqueta(nombre, "Etiqueta", ajustar=True)
+            lbl.setMinimumWidth(120)
+            lbl.setMaximumWidth(210)
+            rej.addWidget(lbl, i, 1, Qt.AlignmentFlag.AlignVCenter)
+            rej.addWidget(valor, i, 2)
+        cuerpo.addWidget(etapas, 1)
+
+        self._panel_estado = panel = QFrame()
+        panel.setObjectName("PanelEstado")
+        panel.setFixedWidth(206)
+        col = QVBoxLayout(panel)
+        col.setContentsMargins(12, 12, 12, 12)
+        col.setSpacing(7)
+        cab_estado = QHBoxLayout()
+        cab_estado.setSpacing(10)
+        cab_estado.addWidget(icono_label(estado_ic, color_estado, 30), 0, Qt.AlignmentFlag.AlignTop)
+        titulo_estado = QLabel(texto_estado)
+        titulo_estado.setStyleSheet(f"color: {color_estado}; font-size: 15px; font-weight: 700;")
+        cab_estado.addWidget(titulo_estado, 1)
+        col.addLayout(cab_estado)
+        col.addSpacing(2)
+        col.addWidget(_FilaDato("Bloques corregidos:", str(r.bloques_corregidos), C.VERDE))
+        col.addWidget(_FilaDato("BER s/ decididos:" if r.hay_empates else "BER observada:",
+                                formato_ber(r.ber_con_codigo)))
+        col.addWidget(_FilaDato("Tasa del código (R):", f"{r.parametros['tasa']:.3f}"))
+        if r.hay_empates:
+            col.addWidget(_FilaDato("Empates:", str(r.empates), C.AMBAR))
+        elif r.bits_erroneos:
+            col.addWidget(_FilaDato("Bits erróneos:", str(r.bits_erroneos), C.ERROR))
+        col.addStretch(1)
+        cuerpo.addWidget(panel)
+        caja.addLayout(cuerpo)
+
+        # ---- Avisos (errores residuales, texto corrupto o empates) ---------
+        if r.hay_empates:
+            caja.addWidget(_aviso(
+                C.AMBAR, "⚠ Decodificación ambigua: algunos bits no pudieron recuperarse",
                 f"{r.empates} de {len(r.bits_originales)} bits quedaron empatados (?) "
                 f"({r.tasa_empates:.1%}). Errores residuales entre los bits decididos: "
                 f"{r.errores_residuales}. BER sobre bits decididos: {formato_ber(r.ber_con_codigo)}. "
-                "El texto no se reconstruye; revisa los bits en «Detalles de transmisión».",
-                "EtiquetaSecundaria", ajustar=True)
-            detalle.setStyleSheet(f"color: {C.TEXTO};")
-            col.addWidget(detalle)
-            caja.addWidget(aviso)
+                "El texto no se reconstruye; revisa los bits en «Detalles de la transmisión»."))
         elif not r.exito:
-            aviso = QFrame()
-            aviso.setObjectName("AvisoResidual")
-            aviso.setStyleSheet(f"QFrame#AvisoResidual {{ background: {rgba(C.ERROR, 0.10)};"
-                                f" border: 1px solid {rgba(C.ERROR, 0.35)}; border-radius: 8px; }}")
-            col = QVBoxLayout(aviso)
-            col.setContentsMargins(10, 8, 10, 8)
-            col.setSpacing(3)
-            if not r.utf8_valido:
-                titulo_aviso = etiqueta("⚠ Mensaje corrupto", "Etiqueta")
-                titulo_aviso.setStyleSheet(f"color: {C.ERROR}; font-weight: 700;")
-                col.addWidget(titulo_aviso)
             texto_aviso = (f"La transmisión terminó con {r.bits_erroneos} bit(s) incorrecto(s) "
                            f"(BER final = {formato_ber(r.ber_con_codigo)}). "
                            "La información recuperada puede estar corrupta.")
@@ -263,28 +379,121 @@ class BurbujaReceptor(_ConTextoAjustable, QFrame):
                 texto_aviso += " Los bytes recibidos no forman UTF‑8 válido (se muestran como «�»)."
             elif hay_diferencias:
                 texto_aviso += " Los fragmentos resaltados difieren del mensaje enviado."
-            detalle = etiqueta(texto_aviso, "EtiquetaSecundaria", ajustar=True)
-            detalle.setStyleSheet(f"color: {C.TEXTO};")
-            col.addWidget(detalle)
-            caja.addWidget(aviso)
+            caja.addWidget(_aviso(C.ERROR, "⚠ Mensaje corrupto" if not r.utf8_valido else None,
+                                  texto_aviso))
 
+        # ---- Pie ---------------------------------------------------------
         pie = QHBoxLayout()
         pie.setSpacing(8)
-        self.boton_detalles = QPushButton("  Detalles de transmisión")
-        self.boton_detalles.setObjectName("BotonDetalles")
+        self.boton_detalles = QPushButton("  Detalles de la transmisión")
+        self.boton_detalles.setObjectName("BotonFantasma")
         self.boton_detalles.setCheckable(True)
-        self.boton_detalles.setIcon(icono("antena", C.TEXTO_SECUNDARIO, 14))
+        self.boton_detalles.setIcon(icono("flecha_derecha", C.TEXTO_SECUNDARIO, 14))
         self.boton_detalles.setCursor(Qt.CursorShape.PointingHandCursor)
         self.boton_detalles.setToolTip("Mostrar u ocultar todas las etapas de la transmisión")
         self.boton_detalles.toggled.connect(self._alternar)
         pie.addWidget(self.boton_detalles)
         pie.addStretch(1)
-        pie.addWidget(etiqueta(_hora(), "HoraBurbuja"))
+        exportar = QPushButton("  Exportar JSON")
+        exportar.setIcon(icono("descargar", C.TEXTO, 15))
+        exportar.setCursor(Qt.CursorShape.PointingHandCursor)
+        exportar.setToolTip("Guardar esta transmisión en un archivo JSON")
+        exportar.clicked.connect(self._exportar)
+        pie.addWidget(exportar)
         caja.addLayout(pie)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Con poco ancho, el panel de estado pasa debajo de las etapas.
+        estrecha = self.width() < 700
+        direccion = (QHBoxLayout.Direction.TopToBottom if estrecha
+                     else QHBoxLayout.Direction.LeftToRight)
+        if self._cuerpo.direction() != direccion:
+            self._cuerpo.setDirection(direccion)
+            if estrecha:
+                self._panel_estado.setMinimumWidth(0)
+                self._panel_estado.setMaximumWidth(16777215)
+            else:
+                self._panel_estado.setFixedWidth(206)
+
     def _alternar(self, activo: bool) -> None:
-        self.boton_detalles.setText("  Ocultar detalles" if activo else "  Detalles de transmisión")
+        self.boton_detalles.setIcon(icono("flecha_abajo" if activo else "flecha_derecha",
+                                          C.TEXTO_SECUNDARIO, 14))
+        self.boton_detalles.setText("  Ocultar detalles" if activo else "  Detalles de la transmisión")
         self.detalles_alternados.emit(activo)
+
+    def _exportar(self) -> None:
+        """Reutiliza la exportación JSON existente con esta única transmisión."""
+        r = self.resultado
+        sugerido = Path.home() / f"codechat-transmision-{r.id}.json"
+        ruta, _ = QFileDialog.getSaveFileName(self, "Exportar transmisión", str(sugerido),
+                                              "Archivos JSON (*.json)")
+        if not ruta:
+            return
+        if not ruta.lower().endswith(".json"):
+            ruta += ".json"
+        try:
+            persistencia.exportar(Path(ruta), [r], incluir_contenido=True)
+        except OSError as e:
+            QMessageBox.critical(self, "Exportar JSON", f"No se pudo guardar el archivo:\n{e}")
+            return
+        QMessageBox.information(self, "Exportar JSON", f"Transmisión exportada a:\n{ruta}")
+
+
+def _aviso(color: str, titulo: str | None, texto: str) -> QFrame:
+    aviso = QFrame()
+    aviso.setObjectName("AvisoTransmision")
+    aviso.setStyleSheet(f"QFrame#AvisoTransmision {{ background: {rgba(color, 0.10)};"
+                        f" border: 1px solid {rgba(color, 0.38)}; border-radius: 9px; }}")
+    col = QVBoxLayout(aviso)
+    col.setContentsMargins(12, 9, 12, 9)
+    col.setSpacing(3)
+    if titulo:
+        t = etiqueta(titulo, "Etiqueta", ajustar=True)
+        t.setStyleSheet(f"color: {color}; font-weight: 700;")
+        col.addWidget(t)
+    d = etiqueta(texto, "EtiquetaSecundaria", ajustar=True)
+    d.setStyleSheet(f"color: {C.TEXTO};")
+    col.addWidget(d)
+    return aviso
+
+
+class BurbujaBienvenida(_ConTextoAjustable, QFrame):
+    """Mensaje de bienvenida (no es una transmisión ni se guarda en el historial)."""
+
+    sugerencia_elegida = Signal(str)
+
+    def __init__(self, sugerencias: list[str], parent=None):
+        super().__init__(parent)
+        self.setObjectName("BurbujaRecibida")
+        caja = QVBoxLayout(self)
+        caja.setContentsMargins(18, 14, 18, 10)
+        caja.setSpacing(6)
+        caja.addWidget(etiqueta("¡Bienvenido a CodeChat Pro!", "AutorBurbuja"))
+        texto = ("Envía un mensaje y lo transmitiré usando un código de repetición a través de un "
+                 "Canal Binario Simétrico (BSC), mostrando todo el proceso de codificación, "
+                 "transmisión y recuperación.")
+        self._texto_plano = texto
+        self._lbl = etiqueta(texto, "TextoBurbuja", ajustar=True)
+        self._lbl.setStyleSheet(f"color: {C.TEXTO_SECUNDARIO}; font-size: 14px;")
+        caja.addWidget(self._lbl)
+        pasos = QLabel(f"<span style='color:{C.AZUL};'>①</span> Escribe &nbsp;→&nbsp; "
+                       f"<span style='color:{C.ROJO};'>②</span> Transmite &nbsp;→&nbsp; "
+                       f"<span style='color:{C.VERDE};'>③</span> Recupera")
+        pasos.setTextFormat(Qt.TextFormat.RichText)
+        pasos.setStyleSheet(f"color: {C.TEXTO}; font-size: 13px; font-weight: 600;")
+        caja.addWidget(pasos)
+        chips = FlujoLayout(espaciado=8)
+        for s in sugerencias:
+            b = QPushButton(s)
+            b.setObjectName("Sugerencia")
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(lambda _=False, t=s: self.sugerencia_elegida.emit(t))
+            chips.addWidget(b)
+        caja.addLayout(chips)
+        hora = etiqueta(_hora(), "HoraBurbuja")
+        hora.setAlignment(Qt.AlignmentFlag.AlignRight)
+        caja.addWidget(hora)
 
 
 class BurbujaSistema(_ConTextoAjustable, QFrame):
@@ -306,13 +515,12 @@ class BurbujaSistema(_ConTextoAjustable, QFrame):
 class Avatar(QLabel):
     def __init__(self, nombre_icono: str = "bot", parent=None):
         super().__init__(parent)
-        self.setFixedSize(40, 40)
+        self.setFixedSize(44, 44)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setPixmap(pixmap(nombre_icono, C.TEXTO, 20))
+        self.setPixmap(pixmap_logo(26))
         self.setToolTip("Receptor CodeChat Pro")
         self.setStyleSheet(
-            f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {C.ROJO_SECUNDARIO}, stop:1 #3A0E1C);"
-            f" border: 1px solid {rgba(C.ROJO, 0.55)}; border-radius: 20px;")
+            f"background: {rgba(C.ROJO, 0.10)}; border: 1px solid {rgba(C.ROJO, 0.40)}; border-radius: 22px;")
 
 
 class IndicadorEscritura(QFrame):
@@ -425,6 +633,13 @@ class Conversacion(QScrollArea):
         if isinstance(widget, _ConTextoAjustable):
             widget.ajustar_ancho(maximo)
 
+    def agregar_bloque(self, widget: QWidget) -> None:
+        """Inserta un elemento decorativo a todo el ancho, sin desplazar la vista al final."""
+        self._lista.insertWidget(self._lista.count() - 1, widget)
+        self._aparecer(widget)
+        self._seguir_final = False
+        QTimer.singleShot(0, lambda: self.verticalScrollBar().setValue(0))
+
     def agregar_separador(self, texto: str) -> None:
         envoltura = QWidget()
         fila = QHBoxLayout(envoltura)
@@ -466,7 +681,17 @@ class Conversacion(QScrollArea):
 
     def agregar_recepcion(self, r: servicio.ResultadoTransmision) -> BurbujaReceptor:
         burbuja = BurbujaReceptor(r)
-        _envoltura, columna = self.agregar_izquierda(burbuja)
+        envoltura = QWidget()
+        fila = QHBoxLayout(envoltura)
+        fila.setContentsMargins(0, 0, 0, 0)
+        fila.setSpacing(12)
+        fila.addWidget(Avatar(), 0, Qt.AlignmentFlag.AlignTop)
+        columna = QVBoxLayout()
+        columna.setSpacing(10)
+        columna.addWidget(burbuja)
+        fila.addLayout(columna, 1)
+        self._limitar(burbuja, 0.92)
+        self._insertar(envoltura)
         estado = {"tarjeta": None}
 
         def alternar(activo: bool) -> None:
@@ -478,7 +703,7 @@ class Conversacion(QScrollArea):
                 tarjeta = TarjetaDetalleTransmision(r, compacta=True)
                 estado["tarjeta"] = tarjeta
                 columna.addWidget(tarjeta)
-                self._limitar(tarjeta, 0.80)
+                self._limitar(tarjeta, 0.92)
                 self._aparecer(tarjeta)
             tarjeta.setVisible(activo)
             if activo:
@@ -524,76 +749,247 @@ class Conversacion(QScrollArea):
 
 
 # ===========================================================================
-# Panel derecho
+# Panel derecho «Análisis y Experimento»
 # ===========================================================================
+class TarjetaMetricaIcono(QFrame):
+    """Métrica con icono tintado, etiqueta y valor (estilo de la referencia)."""
+
+    def __init__(self, nombre_icono: str, titulo: str, color: str, ayuda: str = "", parent=None):
+        super().__init__(parent)
+        self.setObjectName("SubTarjeta")
+        if ayuda:
+            self.setToolTip(ayuda)
+        self.setMinimumHeight(74)
+        fila = QHBoxLayout(self)
+        fila.setContentsMargins(12, 10, 12, 10)
+        fila.setSpacing(12)
+        ic = QLabel()
+        ic.setFixedSize(40, 40)
+        ic.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ic.setPixmap(pixmap(nombre_icono, color, 22))
+        ic.setStyleSheet(f"background: {rgba(color, 0.14)}; border: 1px solid {rgba(color, 0.35)};"
+                         " border-radius: 10px;")
+        fila.addWidget(ic, 0, Qt.AlignmentFlag.AlignVCenter)
+        col = QVBoxLayout()
+        col.setSpacing(1)
+        t = etiqueta(titulo, "EtiquetaSecundaria")
+        t.setStyleSheet(f"color: {C.TEXTO}; font-size: 13px;")
+        col.addWidget(t)
+        self._valor = etiqueta("—", "ValorMetrica")
+        self._valor.setStyleSheet("font-size: 21px;")
+        col.addWidget(self._valor)
+        self._detalle = etiqueta("", "Ayuda", ajustar=True)
+        self._detalle.setStyleSheet("font-size: 11px;")
+        col.addWidget(self._detalle)
+        fila.addLayout(col, 1)
+
+    def set_valor(self, valor: str | None, detalle: str = "") -> None:
+        self._valor.setText("—" if valor is None else valor)
+        self._valor.setStyleSheet("font-size: 21px;" + (f" color: {C.TEXTO_TENUE};" if valor is None else ""))
+        self._detalle.setText(detalle)
+        self._detalle.setVisible(bool(detalle))
+
+
+def _info(texto: str) -> QLabel:
+    lbl = QLabel()
+    lbl.setPixmap(pixmap("info", C.TEXTO_TENUE, 14))
+    lbl.setToolTip(texto)
+    return lbl
+
+
+def _campo_lectura(ayuda: str) -> QLabel:
+    lbl = etiqueta("—", "CampoLectura")
+    lbl.setToolTip(ayuda + " (calculado por el núcleo; solo lectura)")
+    lbl.setMinimumWidth(70)
+    return lbl
+
+
+class DialogoGrafica(QDialog):
+    """Muestra ampliada una gráfica del panel con exactamente los mismos datos."""
+
+    def __init__(self, titulo: str, origen, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(titulo)
+        self.resize(980, 660)
+        self.setMinimumSize(620, 440)
+        caja = QVBoxLayout(self)
+        caja.setContentsMargins(18, 18, 18, 18)
+        marco = QFrame()
+        marco.setObjectName("PanelPrincipal")
+        col = QVBoxLayout(marco)
+        col.setContentsMargins(20, 16, 20, 16)
+        col.setSpacing(10)
+        cab = QHBoxLayout()
+        cab.addWidget(icono_label("grafica", C.ROJO, 26))
+        t = etiqueta(titulo, "TituloTarjeta")
+        t.setStyleSheet("font-size: 20px; font-weight: 700;")
+        cab.addWidget(t, 1)
+        cerrar = QPushButton("Cerrar")
+        cerrar.setCursor(Qt.CursorShape.PointingHandCursor)
+        cerrar.clicked.connect(self.accept)
+        cab.addWidget(cerrar)
+        col.addLayout(cab)
+        if isinstance(origen, GraficaBER):
+            series, vertical, vacio = origen.datos()
+            grafica = GraficaBER()               # versión grande, con leyenda dentro
+            grafica.set_datos(series, vertical, vacio)
+            nota = ("Eje vertical en escala logarítmica. Curva teórica del núcleo para el p actual y "
+                    "BER medidas en el chat con el mismo p (solo n impar). La línea verde marca la "
+                    "capacidad de Shannon C = 1 − H₂(p). Pasa el ratón por los puntos para ver sus valores.")
+        else:
+            grafica = GraficaTasas()
+            grafica.set_datos(origen.datos())
+            nota = ("Tasa del código R = k/n frente a la capacidad del canal C = 1 − H₂(p), "
+                    "ambas calculadas por el núcleo matemático.")
+        col.addWidget(grafica, 1)
+        n = etiqueta(nota, "Ayuda", ajustar=True)
+        n.setStyleSheet("font-size: 12px;")
+        col.addWidget(n)
+        caja.addWidget(marco)
+
+
 class PanelCanal(AreaDesplazable):
-    """Configuración del canal, métricas y gráfica BER frente a la tasa."""
+    """Configuración del canal, métricas y gráficas del último resultado."""
 
     def __init__(self, estado: EstadoApp, parent=None):
-        super().__init__(margenes=(0, 18, 14, 18), espaciado=14, parent=parent)
+        super().__init__(margenes=(0, 0, 0, 0), espaciado=0, parent=parent)
         self.estado = estado
-        self.setMinimumWidth(ANCHO_PANEL_DERECHO - 64)
-        self.setMaximumWidth(ANCHO_PANEL_DERECHO + 30)
-        caja = self.layout_interno
+        self.setMinimumWidth(ANCHO_PANEL_DERECHO - 70)
+        self.setMaximumWidth(ANCHO_PANEL_DERECHO + 40)
 
-        # ---- Configuración --------------------------------------------
-        config = Tarjeta("Configuración del canal", "ajustes", "Canal binario simétrico (BSC)")
-        rejilla = QGridLayout()
-        rejilla.setHorizontalSpacing(12)
-        rejilla.setVerticalSpacing(4)
-        rejilla.addWidget(etiqueta("Código de repetición (n)", "Etiqueta"), 0, 0)
+        marco = QFrame()
+        marco.setObjectName("PanelPrincipal")
+        caja = QVBoxLayout(marco)
+        caja.setContentsMargins(16, 16, 16, 16)
+        caja.setSpacing(14)
+        self.layout_interno.addWidget(marco)
+
+        cab = QHBoxLayout()
+        cab.setSpacing(12)
+        cab.addWidget(icono_label("analisis", C.ROJO, 28))
+        titulo = etiqueta("Análisis y Experimento", "TituloTarjeta")
+        titulo.setStyleSheet("font-size: 20px; font-weight: 700;")
+        cab.addWidget(titulo, 1)
+        caja.addLayout(cab)
+
+        # ---- Parámetros ---------------------------------------------------
+        param = QFrame()
+        param.setObjectName("SubTarjeta")
+        cp = QVBoxLayout(param)
+        cp.setContentsMargins(14, 12, 14, 14)
+        cp.setSpacing(10)
+        t = etiqueta("Parámetros del experimento", "Etiqueta")
+        t.setStyleSheet("font-size: 15px; font-weight: 650;")
+        cp.addWidget(t)
+        rej = QGridLayout()
+        rej.setHorizontalSpacing(8)
+        rej.setVerticalSpacing(8)
         self.selector_n = SelectorN(estado.n)
-        rejilla.addWidget(self.selector_n, 0, 1)
-        rejilla.addWidget(etiqueta("Cada bit se envía n veces · con n par puede haber empates (?)",
-                                   "Ayuda"), 1, 0, 1, 2)
-        rejilla.setRowMinimumHeight(2, 10)
+        self.selector_n.setMinimumWidth(80)
+        self.campo_t = _campo_lectura("Errores corregibles t = ⌊(n − 1)/2⌋")
+        self.campo_dmin = _campo_lectura("Distancia mínima d_min = n")
+        self.campo_k = _campo_lectura("Dimensión k")
+        celdas = [
+            (0, 0, "n:", "Longitud del código de repetición (1–21). Con n par puede haber empates (?).",
+             self.selector_n),
+            (0, 1, "t:", "Errores corregibles por bloque", self.campo_t),
+            (1, 0, "d<sub>min</sub>:", "Distancia mínima del código", self.campo_dmin),
+            (1, 1, "k:", "Bits de información por palabra código", self.campo_k),
+        ]
+        for fila, col, nombre, ayuda, widget in celdas:
+            lbl = QLabel(nombre)
+            lbl.setTextFormat(Qt.TextFormat.RichText)
+            lbl.setStyleSheet("font-size: 14px;")
+            rej.addWidget(lbl, fila, col * 4)
+            rej.addWidget(_info(ayuda), fila, col * 4 + 1)
+            rej.addWidget(widget, fila, col * 4 + 2)
+            if col == 0:
+                rej.setColumnMinimumWidth(3, 14)
+        rej.setColumnStretch(2, 1)
+        rej.setColumnStretch(6, 1)
+        cp.addLayout(rej)
         fila_p = QHBoxLayout()
-        fila_p.addWidget(etiqueta("Probabilidad de error (p)", "Etiqueta"), 1)
-        rejilla.addLayout(fila_p, 3, 0, 1, 2)
+        fila_p.setSpacing(8)
+        lbl_p = QLabel("p:")
+        lbl_p.setStyleSheet("font-size: 14px;")
+        fila_p.addWidget(lbl_p)
+        fila_p.addWidget(_info("Probabilidad de que el canal BSC invierta cada bit (0 – 0.5)"))
         self.control_p = ControlProbabilidad(estado.p)
-        rejilla.addWidget(self.control_p, 4, 0, 1, 2)
-        rejilla.addWidget(etiqueta("Probabilidad de que el canal invierta cada bit (0 – 0.5)",
-                                   "Ayuda", ajustar=True), 5, 0, 1, 2)
-        rejilla.setColumnStretch(0, 1)
-        config.cuerpo.addLayout(rejilla)
-        self.boton_transmitir = QPushButton("  Transmitir mensaje")
+        fila_p.addWidget(self.control_p, 1)
+        cp.addLayout(fila_p)
+        self.boton_transmitir = QPushButton("  Ejecutar transmisión")
         self.boton_transmitir.setObjectName("BotonPrimario")
         self.boton_transmitir.setIcon(icono("play", C.TEXTO, 18))
         self.boton_transmitir.setIconSize(QSize(18, 18))
         self.boton_transmitir.setCursor(Qt.CursorShape.PointingHandCursor)
         self.boton_transmitir.setToolTip("Transmite el texto escrito en el campo de mensaje")
-        config.cuerpo.addWidget(self.boton_transmitir)
-        caja.addWidget(config)
+        cp.addWidget(self.boton_transmitir)
+        caja.addWidget(param)
 
-        # ---- Métricas --------------------------------------------------
-        metricas = Tarjeta("Métricas del código", "analisis", "Valores calculados por el núcleo")
-        rej = QGridLayout()
-        rej.setSpacing(10)
-        self.m_n = TarjetaMetrica("Longitud n", C.ROJO, "Bits enviados por cada bit de información.")
-        self.m_dmin = TarjetaMetrica("Distancia mínima d_min", C.MORADO,
-                                     "d_min = n para un código de repetición.")
-        self.m_t = TarjetaMetrica("Errores corregibles t", C.ROJO, "t = ⌊(d_min − 1) / 2⌋")
-        self.m_r = TarjetaMetrica("Tasa R = k/n", C.AZUL, "Fracción de bits útiles transmitidos.")
-        self.m_ber = TarjetaMetrica("BER (último envío)", C.AMBAR,
-                                    "Tasa de error de bits medida en la última transmisión del chat.")
-        self.m_cap = TarjetaMetrica("Capacidad de Shannon", C.VERDE, "C = 1 − H₂(p)")
-        for i, m in enumerate((self.m_n, self.m_dmin, self.m_t, self.m_r, self.m_ber, self.m_cap)):
-            rej.addWidget(m, i // 2, i % 2)
-        rej.setColumnStretch(0, 1)
-        rej.setColumnStretch(1, 1)
-        metricas.cuerpo.addLayout(rej)
-        caja.addWidget(metricas)
+        # ---- Métricas -----------------------------------------------------
+        t = etiqueta("Métricas del resultado", "Etiqueta")
+        t.setStyleSheet("font-size: 15px; font-weight: 650;")
+        caja.addWidget(t)
+        metricas = QGridLayout()
+        metricas.setSpacing(10)
+        self.m_r = TarjetaMetricaIcono("capas", "Tasa R", C.AZUL, "R = k / n")
+        self.m_ber = TarjetaMetricaIcono("actividad", "BER", C.AMBAR,
+                                         "Tasa de error de bits medida en la última transmisión del chat.")
+        self.m_cap = TarjetaMetricaIcono("escudo", "Capacidad de Shannon", C.VERDE, "C = 1 − H₂(p)")
+        self.m_pe = TarjetaMetricaIcono("grafica", "Pₑ teórico", C.MORADO,
+                                        "Probabilidad residual teórica del núcleo (solo n impar)")
+        for i, m in enumerate((self.m_r, self.m_ber, self.m_cap, self.m_pe)):
+            metricas.addWidget(m, i // 2, i % 2)
+        metricas.setColumnStretch(0, 1)
+        metricas.setColumnStretch(1, 1)
+        caja.addLayout(metricas)
 
-        # ---- Gráfica ---------------------------------------------------
-        tarjeta_grafica = Tarjeta("BER frente a la tasa", "grafica",
-                                  "Curva teórica para el p actual y BER medida en el chat")
-        self.grafica = GraficaBER()
-        self.grafica.setMinimumHeight(280)
-        tarjeta_grafica.cuerpo.addWidget(self.grafica)
-        caja.addWidget(tarjeta_grafica)
+        # ---- Gráficas -----------------------------------------------------
+        graficas = QHBoxLayout()
+        graficas.setSpacing(10)
+        g1 = QFrame()
+        g1.setObjectName("SubTarjeta")
+        c1 = QVBoxLayout(g1)
+        c1.setContentsMargins(10, 10, 10, 8)
+        c1.setSpacing(4)
+        t1 = etiqueta("BER vs. Tasa (R)  ⤢", "Etiqueta")
+        t1.setToolTip("Haz clic en la gráfica para ampliarla")
+        t1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t1.setStyleSheet("font-size: 14px; font-weight: 650;")
+        c1.addWidget(t1)
+        self.grafica = GraficaBER(leyenda=False, compacta=True)
+        self.grafica.set_ampliable()
+        self.grafica.clic.connect(lambda: DialogoGrafica("BER vs. Tasa (R)", self.grafica, self.window()).exec())
+        c1.addWidget(self.grafica, 1)
+        self.leyenda = QLabel()
+        self.leyenda.setTextFormat(Qt.TextFormat.RichText)
+        self.leyenda.setWordWrap(True)
+        self.leyenda.setStyleSheet(f"color: {C.TEXTO_SECUNDARIO}; font-size: 10px;")
+        c1.addWidget(self.leyenda)
+        g2 = QFrame()
+        g2.setObjectName("SubTarjeta")
+        c2 = QVBoxLayout(g2)
+        c2.setContentsMargins(10, 10, 10, 8)
+        c2.setSpacing(4)
+        t2 = etiqueta("Comparativa de Tasas  ⤢", "Etiqueta")
+        t2.setToolTip("Haz clic en la gráfica para ampliarla")
+        t2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t2.setStyleSheet("font-size: 14px; font-weight: 650;")
+        c2.addWidget(t2)
+        self.grafica_tasas = GraficaTasas()
+        self.grafica_tasas.set_ampliable()
+        self.grafica_tasas.clic.connect(
+            lambda: DialogoGrafica("Comparativa de Tasas", self.grafica_tasas, self.window()).exec())
+        c2.addWidget(self.grafica_tasas, 1)
+        nota = etiqueta("Tasa del código R frente a la capacidad C del canal", "Ayuda", ajustar=True)
+        nota.setStyleSheet("font-size: 10px;")
+        c2.addWidget(nota)
+        graficas.addWidget(g1, 1)
+        graficas.addWidget(g2, 1)
+        caja.addLayout(graficas)
         caja.addStretch(1)
 
-        # ---- Señales ---------------------------------------------------
+        # ---- Señales ------------------------------------------------------
         self.selector_n.n_cambiado.connect(estado.establecer_n)
         self.control_p.valor_cambiado.connect(estado.establecer_p)
         estado.configuracion_cambiada.connect(self._al_configurar)
@@ -610,27 +1006,27 @@ class PanelCanal(AreaDesplazable):
     def _refrescar(self) -> None:
         n, p = self.estado.n, self.estado.p
         par = servicio.parametros(n)
-        self.m_n.set_valor(str(par["n"]), f"k = {par['k']}, M = {par['M']}")
-        self.m_dmin.set_valor(str(par["distancia_minima"]), f"detecta {par['errores_detectables']} errores")
-        self.m_t.set_valor(str(par["errores_corregibles"]), "por bloque de n bits")
-        self.m_r.set_valor(f"{par['tasa']:.3f}", "bits útiles por bit enviado")
+        self.campo_t.setText(str(par["errores_corregibles"]))
+        self.campo_dmin.setText(str(par["distancia_minima"]))
+        self.campo_k.setText(str(par["k"]))
         cap = servicio.capacidad(p)
-        self.m_cap.set_valor(f"{cap:.3f}", f"bits/uso con p = {formato_p(p)}")
+        self.m_r.set_valor(f"{par['tasa']:.4f}", f"k = {par['k']}, n = {par['n']}")
+        self.m_cap.set_valor(f"C = {cap:.4f}", f"p = {formato_p(p)}")
+        try:
+            self.m_pe.set_valor(formato_ber(servicio.error_residual(n, p)), f"n = {n}, p = {formato_p(p)}")
+        except ValueError:
+            self.m_pe.set_valor("N/D", "la fórmula del núcleo requiere n impar")
 
         chat = [r for r in self.estado.historial if r.origen == "chat"]
         if chat:
             u = chat[-1]
-            if u.hay_empates:
-                self.m_ber.set_valor(formato_ber(u.ber_con_codigo),
-                                     f"sobre bits decididos · {u.empates} empate(s)")
-            else:
-                self.m_ber.set_valor(formato_ber(u.ber_con_codigo),
-                                     f"sin código: {formato_ber(u.ber_sin_codigo)}")
+            detalle = (f"s/ bits decididos · {u.empates} empate(s)" if u.hay_empates
+                       else f"sin código: {formato_ber(u.ber_sin_codigo)}")
+            self.m_ber.set_valor(formato_ber(u.ber_con_codigo), detalle)
             self.m_ber.setToolTip(f"Última transmisión del chat (n = {u.n}, p = {formato_p(u.p)}).")
         else:
             self.m_ber.set_valor(None, "Envía un mensaje para medirla")
 
-        # Gráfica: curva teórica (core) + BER medidas en el chat con el mismo p
         # Solo n impar: la curva teórica es para n impar y, con empates, la BER no es total.
         medidos = [r for r in chat if abs(r.p - p) < 1e-9 and r.n % 2 == 1
                    and r.ber_con_codigo is not None]
@@ -639,60 +1035,20 @@ class PanelCanal(AreaDesplazable):
             por_n.setdefault(r.n, []).append(r.ber_con_codigo)
         exp_con = sorted((1 / k, sum(v) / len(v)) for k, v in por_n.items())
         etiquetas = [f"n={round(1 / x)}" for x, _ in exp_con]
-        series = [Serie("Teórico con código", C.AZUL, servicio.curva_teorica(p))]
+        series = [Serie("Teórico con código", C.ROJO, servicio.curva_teorica(p))]
         if exp_con:
             series.append(Serie("Medido con código", C.AMBAR, exp_con, tipo="puntos", etiquetas=etiquetas))
             sin = [r.ber_sin_codigo for r in medidos]
-            series.append(Serie("Medido sin código", C.ROJO, [(1.0, sum(sin) / len(sin))], tipo="puntos"))
+            series.append(Serie("Medido sin código", C.AZUL, [(1.0, sum(sin) / len(sin))], tipo="puntos"))
         self.grafica.set_datos(series, vertical=(cap, "C"))
+        self.leyenda.setText(self.grafica.leyenda_html())
+        self.grafica_tasas.set_datos([(f"R", par["tasa"], C.ROJO), ("C", cap, C.VERDE)])
 
 
 # ===========================================================================
 # Vista completa
 # ===========================================================================
-def _pasos_bienvenida() -> QWidget:
-    w = QWidget()
-    fila = QHBoxLayout(w)
-    fila.setContentsMargins(0, 0, 0, 0)
-    fila.setSpacing(8)
-    fila.addStretch(1)
-    pasos = (("texto", "Escribe", "Tu texto se convierte a bits UTF‑8", C.AZUL),
-             ("antena", "Transmite", "Cada bit se repite n veces y cruza el canal BSC", C.ROJO),
-             ("escudo", "Recupera", "La mayoría corrige los bits alterados", C.VERDE))
-    for i, (nombre_ic, titulo, texto, color) in enumerate(pasos, 1):
-        tarjeta = QFrame()
-        tarjeta.setObjectName("PasoBienvenida")
-        tarjeta.setFixedWidth(196)
-        tarjeta.setStyleSheet(
-            f"QFrame#PasoBienvenida {{ background: {C.PANEL}; border: 1px solid {C.BORDE};"
-            f" border-top: 2px solid {color}; border-radius: 14px; }}")
-        caja = QVBoxLayout(tarjeta)
-        caja.setContentsMargins(16, 14, 16, 14)
-        caja.setSpacing(6)
-        cab = QHBoxLayout()
-        cab.setSpacing(8)
-        burbuja = QLabel()
-        burbuja.setFixedSize(34, 34)
-        burbuja.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        burbuja.setPixmap(pixmap(nombre_ic, color, 18))
-        burbuja.setStyleSheet(f"background: {rgba(color, 0.14)}; border: 1px solid {rgba(color, 0.40)};"
-                              " border-radius: 17px;")
-        cab.addWidget(burbuja)
-        cab.addStretch(1)
-        numero = etiqueta(f"0{i}", "Mono")
-        numero.setStyleSheet(f"color: {C.TEXTO_TENUE}; font-size: 12px; font-weight: 700;")
-        cab.addWidget(numero, 0, Qt.AlignmentFlag.AlignTop)
-        caja.addLayout(cab)
-        t = etiqueta(titulo, "Etiqueta")
-        t.setStyleSheet("font-size: 15px; font-weight: 650;")
-        caja.addWidget(t)
-        caja.addWidget(etiqueta(texto, "EtiquetaTenue", ajustar=True))
-        caja.addStretch(1)
-        fila.addWidget(tarjeta)
-        if i < len(pasos):
-            fila.addWidget(icono_label("flecha_derecha", C.TEXTO_TENUE, 16), 0, Qt.AlignmentFlag.AlignVCenter)
-    fila.addStretch(1)
-    return w
+SUGERENCIAS = ["Hola, CodeChat Pro 👋", "Teoría de códigos", "¡Perfecto! 🚀"]
 
 
 class VistaChat(QWidget):
@@ -703,92 +1059,95 @@ class VistaChat(QWidget):
         self._hay_mensajes = False
 
         fila = QHBoxLayout(self)
-        fila.setContentsMargins(0, 0, 0, 0)
+        fila.setContentsMargins(16, 14, 16, 16)
         fila.setSpacing(16)
 
-        # ---- Columna central ------------------------------------------
+        # ---- Panel central del chat ---------------------------------------
         centro = QFrame()
-        centro.setObjectName("Pagina")
+        centro.setObjectName("PanelPrincipal")
         col = QVBoxLayout(centro)
         col.setContentsMargins(0, 0, 0, 0)
         col.setSpacing(0)
 
-        cabecera = EncabezadoPagina(
-            "chat", "Chat",
-            "Mensajería protegida con códigos de repetición sobre un canal BSC")
-        self.chip_canal = Chip("", "info")
-        cabecera.agregar(self.chip_canal)
-        self.boton_limpiar = QPushButton()
-        self.boton_limpiar.setObjectName("BotonFantasma")
-        self.boton_limpiar.setIcon(icono("papelera", C.TEXTO_SECUNDARIO, 18))
-        self.boton_limpiar.setToolTip("Vaciar la conversación (el historial se conserva)")
+        cab = QHBoxLayout()
+        cab.setContentsMargins(22, 16, 18, 14)
+        cab.setSpacing(16)
+        cab.addWidget(icono_label("chat", C.ROJO, 40), 0, Qt.AlignmentFlag.AlignVCenter)
+        textos = QVBoxLayout()
+        textos.setSpacing(2)
+        textos.addWidget(etiqueta("Chat", "TituloPagina"))
+        sub = EtiquetaRecortada("Transmisión de mensajes con codificación y corrección de errores",
+                                "SubtituloPagina")
+        textos.addWidget(sub)
+        cab.addLayout(textos, 1)
+        self.boton_limpiar = QPushButton("  Nueva transmisión")
+        self.boton_limpiar.setObjectName("BotonPrimario")
+        self.boton_limpiar.setIcon(icono("mas", C.TEXTO, 18))
+        self.boton_limpiar.setIconSize(QSize(18, 18))
+        self.boton_limpiar.setToolTip("Empieza una conversación nueva (el historial se conserva)")
         self.boton_limpiar.setCursor(Qt.CursorShape.PointingHandCursor)
-        cabecera.agregar(self.boton_limpiar)
-        col.addWidget(cabecera)
+        cab.addWidget(self.boton_limpiar, 0, Qt.AlignmentFlag.AlignVCenter)
+        col.addLayout(cab)
+        col.addWidget(separador())
 
-        self.pila = QStackedWidget()
-        self.vacio = EstadoVacio(
-            "chat", "Bienvenido a CodeChat Pro",
-            "Envía un mensaje y observa cómo se codifica, cómo el canal introduce errores "
-            "y cómo el receptor los corrige mediante códigos de repetición.",
-            ["Hola, CodeChat Pro 👋", "Teoría de códigos", "¡Perfecto! 🚀"],
-            extra=_pasos_bienvenida(), logo=True)
         self.conversacion = Conversacion()
-        self.pila.addWidget(self.vacio)
-        self.pila.addWidget(self.conversacion)
-        col.addWidget(self.pila, 1)
+        col.addWidget(self.conversacion, 1)
 
         self.barra = QFrame()
         self.barra.setObjectName("BarraEntrada")
         fila_barra = QHBoxLayout(self.barra)
-        fila_barra.setContentsMargins(16, 8, 8, 8)
+        fila_barra.setContentsMargins(12, 10, 10, 10)
         fila_barra.setSpacing(10)
-        fila_barra.addWidget(icono_label("binario", C.TEXTO_TENUE, 20), 0, Qt.AlignmentFlag.AlignVCenter)
         self.entrada = EntradaMensaje()
+        self.entrada.setToolTip("Enter para enviar · Shift + Enter para nueva línea")
         fila_barra.addWidget(self.entrada, 1, Qt.AlignmentFlag.AlignVCenter)
-        self.boton_enviar = QPushButton()
+        self.contador = etiqueta(f"0/{LONGITUD_MAXIMA}", "EtiquetaTenue")
+        self.contador.setMinimumWidth(52)
+        self.contador.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        fila_barra.addWidget(self.contador, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.boton_enviar = QPushButton("  Enviar")
         self.boton_enviar.setObjectName("BotonEnviar")
-        self.boton_enviar.setIcon(icono("enviar", C.TEXTO, 22))
-        self.boton_enviar.setIconSize(QSize(22, 22))
-        self.boton_enviar.setFixedSize(50, 46)
+        self.boton_enviar.setIcon(icono("enviar", C.TEXTO, 20))
+        self.boton_enviar.setIconSize(QSize(20, 20))
+        self.boton_enviar.setFixedHeight(44)
+        self.boton_enviar.setMinimumWidth(116)
         self.boton_enviar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.boton_enviar.setToolTip("Transmitir (Enter)")
         fila_barra.addWidget(self.boton_enviar, 0, Qt.AlignmentFlag.AlignBottom)
-
         envoltura_barra = QWidget()
         eb = QVBoxLayout(envoltura_barra)
-        eb.setContentsMargins(18, 8, 0, 12)
-        eb.setSpacing(6)
+        eb.setContentsMargins(14, 8, 14, 14)
         eb.addWidget(self.barra)
-        pie = QHBoxLayout()
-        pie.setContentsMargins(8, 0, 8, 0)
-        pie.addWidget(etiqueta("Enter para enviar · Shift + Enter para nueva línea", "EtiquetaTenue"))
-        pie.addStretch(1)
-        self.contador = etiqueta(f"0/{LONGITUD_MAXIMA}", "EtiquetaTenue")
-        pie.addWidget(self.contador)
-        eb.addLayout(pie)
         col.addWidget(envoltura_barra)
         fila.addWidget(centro, 1)
 
-        # ---- Panel derecho --------------------------------------------
+        # ---- Panel derecho -------------------------------------------------
         self.panel = PanelCanal(estado)
         fila.addWidget(self.panel)
 
-        # ---- Señales --------------------------------------------------
+        # ---- Señales -------------------------------------------------------
         self.entrada.enviar_pedido.connect(self.enviar)
         self.entrada.textChanged.connect(self._al_escribir)
         self.entrada.foco_cambiado.connect(self._al_cambiar_foco)
         self.boton_enviar.clicked.connect(self.enviar)
         self.panel.boton_transmitir.clicked.connect(self.enviar)
         self.boton_limpiar.clicked.connect(self.limpiar)
+        self._agregar_bienvenida()
+
+    # ---- bienvenida ---------------------------------------------------------
+    def _agregar_bienvenida(self) -> None:
+        self.vacio = BurbujaBienvenida(SUGERENCIAS)
         self.vacio.sugerencia_elegida.connect(self._usar_sugerencia)
-        estado.configuracion_cambiada.connect(lambda _n, _p: self._actualizar_chip())
-        self._actualizar_chip()
+        self.conversacion.agregar_izquierda(self.vacio)
+        # Ilustración central mientras la conversación está vacía.
+        self._ilustracion = EstadoVacio(
+            "chat", "Sin mensajes todavía",
+            "Escribe un mensaje abajo o elige una sugerencia para ver cada etapa: "
+            "codificación, ruido del canal y decodificación por mayoría.")
+        self._ilustracion.setMinimumHeight(320)
+        self.conversacion.agregar_bloque(self._ilustracion)
 
-    # ---- interacción ------------------------------------------------------
-    def _actualizar_chip(self) -> None:
-        self.chip_canal.setText(f"Canal BSC · n = {self.estado.n} · p = {formato_p(self.estado.p)}")
-
+    # ---- interacción --------------------------------------------------------
     def _al_escribir(self) -> None:
         self.contador.setText(f"{len(self.entrada.texto())}/{LONGITUD_MAXIMA}")
         if self.barra.property("alerta"):
@@ -825,7 +1184,9 @@ class VistaChat(QWidget):
 
         if not self._hay_mensajes:
             self._hay_mensajes = True
-            self.pila.setCurrentWidget(self.conversacion)
+            if self._ilustracion is not None:
+                self.conversacion.quitar(self._ilustracion)
+                self._ilustracion = None
             self.conversacion.agregar_separador("Hoy")
 
         n, p = self.estado.n, self.estado.p
@@ -854,9 +1215,6 @@ class VistaChat(QWidget):
         if self._ocupado:
             return
         self.conversacion.limpiar()
+        self._ilustracion = None
         self._hay_mensajes = False
-        self.pila.setCurrentWidget(self.vacio)
-
-
-# Exportado para otras vistas que quieran describir estados.
-__all__ = ["VistaChat", "ESTADOS_TRANSMISION"]
+        self._agregar_bienvenida()

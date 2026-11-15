@@ -143,12 +143,7 @@ class VistaHistorial(QWidget):
         fila_filtro = QHBoxLayout()
         self.filtro = ControlSegmentado(self.FILTROS)
         fila_filtro.addWidget(self.filtro)
-        fila_filtro.addSpacing(16)
-        ruta = EtiquetaRecortada(f"Almacenamiento local: {estado.almacen.ruta}", "EtiquetaTenue")
-        ruta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        ruta.setToolTip(f"{estado.almacen.ruta}\n\nLos registros nunca salen de este equipo: "
-                        "no hay servicios externos ni telemetría.")
-        fila_filtro.addWidget(ruta, 1)
+        fila_filtro.addStretch(1)
         cuerpo.addLayout(fila_filtro)
 
         self.pila = QStackedWidget()

@@ -1,14 +1,14 @@
-"""Barra lateral: logotipo, navegación y tarjeta del código actual."""
+"""Barra lateral: logotipo, navegación e indicador de estado del sistema."""
 
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
-from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from interfaz import servicio
-from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, icono_label, separador
-from interfaz.estilos import ANCHO_BARRA_LATERAL, C, qcolor, rgba
+from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, separador
+from interfaz.estilos import ANCHO_BARRA_LATERAL, C, qcolor
 
 SECCIONES = [
     ("Chat", "chat"),
@@ -19,45 +19,56 @@ SECCIONES = [
 ]
 
 
-class TarjetaCodigoActual(QFrame):
+class _PuntoEstado(QWidget):
+    """Punto verde con halo que indica que el sistema está listo."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("TarjetaCodigo")
-        self.setStyleSheet(f"""
-            QFrame#TarjetaCodigo {{
-                background: {rgba(C.PANEL, 0.92)};
-                border: 1px solid {C.BORDE};
-                border-radius: 14px;
-            }}""")
-        caja = QVBoxLayout(self)
-        caja.setContentsMargins(18, 16, 18, 16)
-        caja.setSpacing(10)
-        caja.addWidget(etiqueta("Código actual", "TituloTarjeta"))
-        caja.addWidget(separador())
+        self.setFixedSize(16, 16)
 
-        fila = QHBoxLayout()
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = QPointF(8, 8)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(qcolor(C.VERDE, 50))
+        p.drawEllipse(c, 7.5, 7.5)
+        p.setBrush(qcolor(C.VERDE))
+        p.drawEllipse(c, 4.5, 4.5)
+        p.end()
+
+
+class TarjetaCodigoActual(QFrame):
+    """Indicador inferior «Sistema listo» con los parámetros activos del canal."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("EstadoSistema")
+        self.setStyleSheet(f"QFrame#EstadoSistema {{ background: transparent; border: none;"
+                           f" border-top: 1px solid {C.BORDE_SUAVE}; }}")
+        fila = QHBoxLayout(self)
+        fila.setContentsMargins(8, 16, 4, 4)
         fila.setSpacing(12)
-        fila.addWidget(icono_label("capas", C.ROJO, 26), 0, Qt.AlignmentFlag.AlignTop)
-        datos = QVBoxLayout()
-        datos.setSpacing(4)
-        datos.addWidget(etiqueta("Código de repetición", "EtiquetaSecundaria"))
+        fila.addWidget(_PuntoEstado(), 0, Qt.AlignmentFlag.AlignTop)
+        col = QVBoxLayout()
+        col.setSpacing(3)
+        titulo = etiqueta("Sistema listo", "Etiqueta")
+        titulo.setStyleSheet("font-size: 15px; font-weight: 600;")
+        col.addWidget(titulo)
         self._valores = QLabel()
         self._valores.setTextFormat(Qt.TextFormat.RichText)
-        self._valores.setObjectName("Mono")
-        datos.addWidget(self._valores)
-        fila.addLayout(datos, 1)
-        caja.addLayout(fila)
+        self._valores.setWordWrap(True)
+        self._valores.setObjectName("EtiquetaSecundaria")
+        col.addWidget(self._valores)
+        fila.addLayout(col, 1)
 
     def actualizar(self, n: int, p: float | None = None) -> None:
         par = servicio.parametros(n)
-        filas = [("n", str(par["n"])), ("d<sub>min</sub>", str(par["distancia_minima"])),
-                 ("t", str(par["errores_corregibles"])), ("R", f"{par['tasa']:.2f}")]
+        detalle = (f"BSC activo &nbsp;·&nbsp; n = {par['n']}, t = {par['errores_corregibles']}, "
+                   f"R = {par['tasa']:.2f}")
         if p is not None:
-            filas.append(("p", formato_p(p)))
-        self._valores.setText(
-            "<table cellspacing='0' cellpadding='1'>" + "".join(
-                f"<tr><td style='color:{C.TEXTO_SECUNDARIO}; padding-right:10px;'>{k}</td>"
-                f"<td>=&nbsp;&nbsp;<b>{v}</b></td></tr>" for k, v in filas) + "</table>")
+            detalle += f" &nbsp;·&nbsp; p = {formato_p(p)}"
+        self._valores.setText(f"<span style='color:{C.TEXTO_SECUNDARIO};'>{detalle}</span>")
 
 
 class BarraLateral(QFrame):
@@ -67,26 +78,30 @@ class BarraLateral(QFrame):
         super().__init__(parent)
         self.setFixedWidth(ANCHO_BARRA_LATERAL)
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(18, 26, 18, 20)
+        caja.setContentsMargins(16, 24, 16, 18)
         caja.setSpacing(6)
 
-        self._logo = Logo()
-        caja.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignHCenter)
-        marca = QLabel(f"CodeChat <span style='color:{C.ROJO};'>Pro</span>")
-        marca.setTextFormat(Qt.TextFormat.RichText)
-        marca.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        marca.setStyleSheet("font-size: 27px; font-weight: 800;")
-        caja.addWidget(marca)
-        sub = etiqueta("Mensajería con Teoría de Códigos", "EtiquetaSecundaria")
-        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        caja.addWidget(sub)
-        caja.addSpacing(18)
-        caja.addWidget(separador())
-        caja.addSpacing(12)
-        seccion = etiqueta("NAVEGACIÓN", "Seccion")
-        seccion.setContentsMargins(10, 0, 0, 4)
-        caja.addWidget(seccion)
+        # ---- Marca ---------------------------------------------------------
+        marca = QHBoxLayout()
+        marca.setSpacing(12)
+        self._logo = Logo(70, 70)
+        marca.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignTop)
+        textos = QVBoxLayout()
+        textos.setSpacing(2)
+        nombre = QLabel(f"CodeChat <span style='color:{C.ROJO};'>Pro</span>")
+        nombre.setTextFormat(Qt.TextFormat.RichText)
+        nombre.setStyleSheet("font-size: 25px; font-weight: 800; letter-spacing: -0.4px;")
+        textos.addWidget(nombre)
+        sub = QLabel("Mensajería con<br>Teoría de Códigos")
+        sub.setTextFormat(Qt.TextFormat.RichText)
+        sub.setStyleSheet(f"font-size: 15px; color: {C.TEXTO_SECUNDARIO};")
+        textos.addWidget(sub)
+        textos.addStretch(1)
+        marca.addLayout(textos, 1)
+        caja.addLayout(marca)
+        caja.addSpacing(26)
 
+        # ---- Navegación ----------------------------------------------------
         self._grupo = QButtonGroup(self)
         self._grupo.setExclusive(True)
         self.botones: list[BotonNavegacion] = []
@@ -96,13 +111,11 @@ class BarraLateral(QFrame):
             self._grupo.addButton(b, i)
             self.botones.append(b)
             caja.addWidget(b)
+            caja.addSpacing(2)
         self.botones[0].setChecked(True)
         self._grupo.idClicked.connect(self.seccion_elegida.emit)
 
         caja.addStretch(1)
-        seccion_cfg = etiqueta("CONFIGURACIÓN ACTIVA", "Seccion")
-        seccion_cfg.setContentsMargins(10, 0, 0, 4)
-        caja.addWidget(seccion_cfg)
         self.tarjeta_codigo = TarjetaCodigoActual()
         caja.addWidget(self.tarjeta_codigo)
 
@@ -115,33 +128,34 @@ class BarraLateral(QFrame):
         r = QRectF(self.rect())
         fondo = QLinearGradient(r.topLeft(), r.bottomLeft())
         fondo.setColorAt(0, qcolor(C.FONDO_LATERAL))
-        fondo.setColorAt(1, qcolor("#0A0B12"))
+        fondo.setColorAt(1, qcolor("#0B0F1A"))
         p.fillRect(r, fondo)
 
         # Halo suave detrás del logotipo
         centro = QPointF(self._logo.geometry().center())
-        halo = QRadialGradient(centro, 120)
-        halo.setColorAt(0, qcolor(C.ROJO, 46))
-        halo.setColorAt(0.55, qcolor(C.ROJO, 12))
+        halo = QRadialGradient(centro, 110)
+        halo.setColorAt(0, qcolor(C.ROJO, 40))
+        halo.setColorAt(0.55, qcolor(C.ROJO, 10))
         halo.setColorAt(1, qcolor(C.ROJO, 0))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(halo)
-        p.drawEllipse(centro, 120, 120)
+        p.drawEllipse(centro, 110, 110)
 
-        # Ondas decorativas discretas (señal transmitida)
-        base_y = r.height() * 0.66
-        for k in range(14):
+        # Ondas decorativas en la parte inferior (señal transmitida)
+        base_y = r.height() * 0.78
+        for k in range(16):
             ruta = QPainterPath()
-            fase = k * 0.18
-            amplitud = 26 + k * 2.2
+            fase = k * 0.16
+            amplitud = 24 + k * 2.4
             for i in range(0, int(r.width()) + 8, 6):
                 x = float(i)
-                y = base_y - x * 0.20 + math.sin(x / 48 + fase) * amplitud * (0.4 + x / r.width())
+                y = base_y - x * 0.22 + math.sin(x / 52 + fase) * amplitud * (0.35 + x / r.width())
                 if i == 0:
                     ruta.moveTo(QPointF(x, y))
                 else:
                     ruta.lineTo(QPointF(x, y))
-            p.setPen(QPen(qcolor(C.ROJO, 14 + k * 3), 1.1))
+            p.setPen(QPen(qcolor(C.ROJO, 12 + k * 3), 1.1))
+            p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawPath(ruta)
 
         p.setPen(QPen(qcolor(C.BORDE_SUAVE), 1))

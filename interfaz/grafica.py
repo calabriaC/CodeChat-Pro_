@@ -8,8 +8,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from interfaz.estilos import C, fuente, qcolor
@@ -28,8 +28,24 @@ class Serie:
     etiquetas: list[str] = field(default_factory=list)
 
 
-class _LienzoLog(QWidget):
+class _Ampliable:
+    """Mezcla: la gráfica emite `clic` al pulsarla si se marcó como ampliable."""
+
+    def set_ampliable(self, activo: bool = True) -> None:
+        self._ampliable = activo
+        self.setCursor(Qt.CursorShape.PointingHandCursor if activo else Qt.CursorShape.ArrowCursor)
+        self.setToolTip("Clic para ampliar la gráfica" if activo else "")
+
+    def mouseReleaseEvent(self, event):
+        if getattr(self, "_ampliable", False) and event.button() == Qt.MouseButton.LeftButton:
+            self.clic.emit()
+        super().mouseReleaseEvent(event)
+
+
+class _LienzoLog(_Ampliable, QWidget):
     """Base con eje Y logarítmico, rejilla, leyenda y tooltip."""
+
+    clic = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -78,11 +94,12 @@ class _LienzoLog(QWidget):
         # títulos
         p.setFont(fuente(9, QFont.Weight.DemiBold))
         p.setPen(QColor(C.TEXTO_SECUNDARIO))
-        p.save()
-        p.translate(14, area.center().y())
-        p.rotate(-90)
-        p.drawText(QRectF(-60, -9, 120, 18), Qt.AlignmentFlag.AlignCenter, self._titulo_y)
-        p.restore()
+        if self._titulo_y:
+            p.save()
+            p.translate(14, area.center().y())
+            p.rotate(-90)
+            p.drawText(QRectF(-60, -9, 120, 18), Qt.AlignmentFlag.AlignCenter, self._titulo_y)
+            p.restore()
         if self._titulo_x:
             p.drawText(QRectF(area.left(), self.height() - 22, area.width(), 18),
                        Qt.AlignmentFlag.AlignCenter, self._titulo_x)
@@ -174,11 +191,16 @@ class _LienzoLog(QWidget):
 class GraficaBER(_LienzoLog):
     """BER frente a la tasa R ∈ [0, 1] con escala logarítmica en Y."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, leyenda: bool = True, compacta: bool = False):
         super().__init__(parent)
         self._series: list[Serie] = []
         self._vertical: tuple[float, str] | None = None
-        self._titulo_x = "R (tasa del código)"
+        self._con_leyenda = leyenda
+        self._compacta = compacta
+        if compacta:
+            self.setMinimumHeight(170)
+            self._titulo_y = ""
+        self._titulo_x = "Tasa R" if compacta else "R (tasa del código)"
         # La BER crece con R, así que la esquina inferior derecha queda libre.
         self._leyenda_abajo = True
 
@@ -205,12 +227,14 @@ class GraficaBER(_LienzoLog):
         area = self._area()
         self._pintar_ejes_y(p, area)
 
-        p.setFont(fuente(8.5))
+        p.setFont(fuente(7.5 if self._compacta else 8.5))
         for i in range(0, 6):
             v = i * 0.2
             x = self._x(v, area)
             p.setPen(QPen(qcolor(C.BORDE, 90), 1, Qt.PenStyle.DashLine))
             p.drawLine(QPointF(x, area.top()), QPointF(x, area.bottom()))
+            if self._compacta and i == 0:
+                continue
             p.setPen(QColor(C.TEXTO_SECUNDARIO))
             p.drawText(QRectF(x - 20, area.bottom() + 6, 40, 16), Qt.AlignmentFlag.AlignCenter, f"{v:.1f}")
 
@@ -260,8 +284,86 @@ class GraficaBER(_LienzoLog):
             items.append(("BER = 0 (dibujado en el borde inferior)", C.TEXTO_SECUNDARIO, "hueco"))
         if self._vertical:
             items.append((f"Capacidad C = {self._vertical[0]:.3f}", C.VERDE, "vertical"))
-        self._pintar_leyenda(p, area, items)
+        if self._con_leyenda:
+            self._pintar_leyenda(p, area, items)
         self._pintar_hover(p)
+        p.end()
+
+    def _area(self) -> QRectF:
+        if self._compacta:
+            return QRectF(36, 10, max(10, self.width() - 36 - 10), max(10, self.height() - 10 - 40))
+        return super()._area()
+
+    def datos(self) -> tuple[list[Serie], tuple[float, str] | None, str]:
+        """Series, línea vertical y mensaje vacío actuales (para mostrarlos ampliados)."""
+        return list(self._series), self._vertical, self._mensaje_vacio
+
+    def leyenda_html(self) -> str:
+        """Leyenda como texto enriquecido, para mostrarla fuera del lienzo."""
+        items = [(s.nombre, s.color, "●" if s.tipo == "puntos" else "━") for s in self._series]
+        if any(y <= 0 for s in self._series for _, y in s.puntos):
+            items.append(("BER = 0 (borde inferior)", C.TEXTO_SECUNDARIO, "○"))
+        if self._vertical:
+            items.append((f"C = {self._vertical[0]:.3f}", C.VERDE, "┊"))
+        return " &nbsp; ".join(f"<span style='color:{c};'>{m}</span> {n}" for n, c, m in items)
+
+
+class GraficaTasas(_Ampliable, QWidget):
+    """Barras lineales 0–1 para comparar la tasa R con la capacidad C (valores del núcleo)."""
+
+    clic = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(170)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._barras: list[tuple[str, float, str]] = []
+
+    def set_datos(self, barras: list[tuple[str, float, str]]) -> None:
+        """barras: (etiqueta, valor en [0, 1], color)."""
+        self._barras = barras
+        self.update()
+
+    def datos(self) -> list[tuple[str, float, str]]:
+        return list(self._barras)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        area = QRectF(40, 10, max(10, self.width() - 52), max(10, self.height() - 10 - 40))
+        p.setFont(fuente(8))
+        for i in range(6):
+            v = i * 0.2
+            y = area.bottom() - v * area.height()
+            p.setPen(QPen(qcolor(C.BORDE, 140), 1, Qt.PenStyle.DashLine))
+            p.drawLine(QPointF(area.left(), y), QPointF(area.right(), y))
+            p.setPen(QColor(C.TEXTO_SECUNDARIO))
+            p.drawText(QRectF(0, y - 8, area.left() - 6, 16),
+                       Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"{v:.1f}")
+        p.setPen(QPen(QColor(C.BORDE), 1.2))
+        p.drawLine(area.bottomLeft(), area.bottomRight())
+        if not self._barras:
+            p.end()
+            return
+        ancho = area.width() / len(self._barras)
+        for i, (nombre, valor, color) in enumerate(self._barras):
+            alto = max(0.0, min(1.0, valor)) * area.height()
+            barra = QRectF(area.left() + ancho * i + ancho * 0.22, area.bottom() - alto,
+                           ancho * 0.56, alto)
+            grad = QLinearGradient(barra.topLeft(), barra.bottomLeft())
+            grad.setColorAt(0, QColor(color))
+            grad.setColorAt(1, qcolor(color, 150))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(grad)
+            p.drawRoundedRect(barra, 3, 3)
+            p.setFont(fuente(8.5, QFont.Weight.DemiBold))
+            p.setPen(QColor(C.TEXTO))
+            p.drawText(QRectF(barra.left() - 20, area.bottom() + 4, barra.width() + 40, 16),
+                       Qt.AlignmentFlag.AlignCenter, nombre)
+            p.setFont(fuente(8))
+            p.setPen(QColor(C.TEXTO_SECUNDARIO))
+            p.drawText(QRectF(barra.left() - 20, area.bottom() + 19, barra.width() + 40, 16),
+                       Qt.AlignmentFlag.AlignCenter, f"({valor:.3f})")
         p.end()
 
 

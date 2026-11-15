@@ -654,22 +654,43 @@ def _pasos_bienvenida() -> QWidget:
     w = QWidget()
     fila = QHBoxLayout(w)
     fila.setContentsMargins(0, 0, 0, 0)
-    fila.setSpacing(10)
+    fila.setSpacing(8)
     fila.addStretch(1)
-    for nombre_ic, titulo, texto in (("texto", "1 · Escribe", "Tu texto se convierte a bits UTF‑8"),
-                                     ("antena", "2 · Transmite", "Se repite n veces y cruza el BSC"),
-                                     ("escudo", "3 · Recupera", "La mayoría corrige los errores")):
+    pasos = (("texto", "Escribe", "Tu texto se convierte a bits UTF‑8", C.AZUL),
+             ("antena", "Transmite", "Cada bit se repite n veces y cruza el canal BSC", C.ROJO),
+             ("escudo", "Recupera", "La mayoría corrige los bits alterados", C.VERDE))
+    for i, (nombre_ic, titulo, texto, color) in enumerate(pasos, 1):
         tarjeta = QFrame()
-        tarjeta.setObjectName("TarjetaInterna")
-        tarjeta.setFixedWidth(178)
+        tarjeta.setObjectName("PasoBienvenida")
+        tarjeta.setFixedWidth(196)
+        tarjeta.setStyleSheet(
+            f"QFrame#PasoBienvenida {{ background: {C.PANEL}; border: 1px solid {C.BORDE};"
+            f" border-top: 2px solid {color}; border-radius: 14px; }}")
         caja = QVBoxLayout(tarjeta)
-        caja.setContentsMargins(14, 12, 14, 12)
-        caja.setSpacing(4)
-        caja.addWidget(icono_label(nombre_ic, C.ROJO, 20))
-        caja.addWidget(etiqueta(titulo, "Etiqueta"))
+        caja.setContentsMargins(16, 14, 16, 14)
+        caja.setSpacing(6)
+        cab = QHBoxLayout()
+        cab.setSpacing(8)
+        burbuja = QLabel()
+        burbuja.setFixedSize(34, 34)
+        burbuja.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        burbuja.setPixmap(pixmap(nombre_ic, color, 18))
+        burbuja.setStyleSheet(f"background: {rgba(color, 0.14)}; border: 1px solid {rgba(color, 0.40)};"
+                              " border-radius: 17px;")
+        cab.addWidget(burbuja)
+        cab.addStretch(1)
+        numero = etiqueta(f"0{i}", "Mono")
+        numero.setStyleSheet(f"color: {C.TEXTO_TENUE}; font-size: 12px; font-weight: 700;")
+        cab.addWidget(numero, 0, Qt.AlignmentFlag.AlignTop)
+        caja.addLayout(cab)
+        t = etiqueta(titulo, "Etiqueta")
+        t.setStyleSheet("font-size: 15px; font-weight: 650;")
+        caja.addWidget(t)
         caja.addWidget(etiqueta(texto, "EtiquetaTenue", ajustar=True))
         caja.addStretch(1)
         fila.addWidget(tarjeta)
+        if i < len(pasos):
+            fila.addWidget(icono_label("flecha_derecha", C.TEXTO_TENUE, 16), 0, Qt.AlignmentFlag.AlignVCenter)
     fila.addStretch(1)
     return w
 
@@ -707,11 +728,11 @@ class VistaChat(QWidget):
 
         self.pila = QStackedWidget()
         self.vacio = EstadoVacio(
-            "chat", "Tu conversación empieza aquí",
+            "chat", "Bienvenido a CodeChat Pro",
             "Envía un mensaje y observa cómo se codifica, cómo el canal introduce errores "
-            "y cómo el receptor los corrige.",
+            "y cómo el receptor los corrige mediante códigos de repetición.",
             ["Hola, CodeChat Pro 👋", "Teoría de códigos", "¡Perfecto! 🚀"],
-            extra=_pasos_bienvenida())
+            extra=_pasos_bienvenida(), logo=True)
         self.conversacion = Conversacion()
         self.pila.addWidget(self.vacio)
         self.pila.addWidget(self.conversacion)

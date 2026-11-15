@@ -309,9 +309,14 @@ def curva_teorica(p: float, longitudes=VALORES_N_IMPARES) -> list[tuple[float, f
     return [(calcular_parametros(n)["tasa"], probabilidad_error_residual(n, p)) for n in longitudes]
 
 
-def experimentos(p: float, longitud_bits: int, longitudes=LONGITUDES_ANALISIS) -> list[dict]:
-    """Ejecuta `core.experimentos.ejecutar_experimentos` sobre bits aleatorios."""
-    mensaje = bits_aleatorios(longitud_bits)
+def experimentos(p: float, longitud_bits: int | None = None, longitudes=LONGITUDES_ANALISIS,
+                 bits: str | None = None) -> list[dict]:
+    """Ejecuta `core.experimentos.ejecutar_experimentos`.
+
+    Usa `bits` si se proporcionan (p. ej. los bits UTF‑8 de un texto); si no, genera
+    `longitud_bits` bits aleatorios.
+    """
+    mensaje = bits if bits is not None else bits_aleatorios(longitud_bits)
     return ejecutar_experimentos(mensaje, p, longitudes)
 
 

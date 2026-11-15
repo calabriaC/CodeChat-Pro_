@@ -16,25 +16,26 @@ class C:
     """Colores de la aplicación (hex)."""
 
     FONDO = "#090B12"            # fondo principal
-    FONDO_LATERAL = "#101420"    # barra lateral
-    PANEL = "#171C2A"            # tarjetas
-    SUPERFICIE = "#1E2436"       # superficies dentro de tarjetas
-    SUPERFICIE_ALTA = "#283048"  # hover / elementos elevados
+    FONDO_LATERAL = "#101420"    # navegación
+    PANEL = "#171C2A"            # tarjetas y paneles
+    SUPERFICIE = "#1E2534"       # superficies secundarias
+    SUPERFICIE_ALTA = "#283044"  # hover / elementos elevados
     CAMPO = "#0E121C"            # fondo de campos y visores
+    BRILLO_BORDE = "#343C52"     # filo superior de las tarjetas (profundidad discreta)
     ROJO = "#FF334A"             # acento principal
     ROJO_SECUNDARIO = "#C91E40"
     ROJO_CLARO = "#FF5A6D"
     ROJO_OSCURO = "#9F1732"
-    AZUL = "#46A6FF"
+    AZUL = "#46A6FF"             # informativo
     VERDE = "#19D99A"            # éxito
     AMBAR = "#FFB547"            # advertencia
     ERROR = "#FF5263"            # error
     MORADO = "#A274FF"
     TEXTO = "#F5F7FF"
     TEXTO_SECUNDARIO = "#A3ADBF"
-    TEXTO_TENUE = "#717B90"
-    BORDE = "#242B3A"
-    BORDE_SUAVE = "#1F2533"
+    TEXTO_TENUE = "#737D92"
+    BORDE = "#2A3142"
+    BORDE_SUAVE = "#222837"
 
 
 def qcolor(hex_color: str, alfa: int = 255) -> QColor:
@@ -53,21 +54,29 @@ def rgba(hex_color: str, alfa: float) -> str:
 # ---------------------------------------------------------------------------
 # Tipografía
 # ---------------------------------------------------------------------------
-FUENTE = "Segoe UI"
-FUENTE_MONO = "Cascadia Mono"
+# Inter y JetBrains Mono se usan si están instaladas; si no, Qt recurre a las
+# alternativas del sistema (Segoe UI Variable / Segoe UI y Cascadia Mono / Consolas).
+FAMILIAS_UI = ["Inter", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI"]
+FAMILIAS_MONO = ["JetBrains Mono", "Cascadia Mono", "Consolas", "Courier New"]
+FUENTE = FAMILIAS_UI[0]
+FUENTE_MONO = FAMILIAS_MONO[0]
 FUENTE_MONO_RESPALDO = "Consolas"
+PILA_UI = ", ".join(f'"{f}"' for f in FAMILIAS_UI)
+PILA_MONO = ", ".join(f'"{f}"' for f in FAMILIAS_MONO)
 
 
 def fuente(tamano: int = 10, peso: QFont.Weight = QFont.Weight.Normal) -> QFont:
     f = QFont(FUENTE)
+    f.setFamilies(FAMILIAS_UI)
     f.setPointSizeF(tamano)
     f.setWeight(peso)
+    f.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     return f
 
 
 def fuente_mono(tamano: int = 10) -> QFont:
     f = QFont(FUENTE_MONO)
-    f.setFamilies([FUENTE_MONO, FUENTE_MONO_RESPALDO, "Courier New"])
+    f.setFamilies(FAMILIAS_MONO)
     f.setStyleHint(QFont.StyleHint.Monospace)
     f.setPointSizeF(tamano)
     return f
@@ -95,7 +104,7 @@ def hoja_estilos() -> str:
     chevron = _ruta_qss("chevron_abajo.svg")
     return f"""
 * {{
-    font-family: "{FUENTE}";
+    font-family: {PILA_UI};
     color: {C.TEXTO};
     outline: none;
 }}
@@ -109,33 +118,35 @@ QToolTip {{
     color: {C.TEXTO};
     border: 1px solid {C.BORDE};
     border-radius: 6px;
-    padding: 6px 8px;
+    padding: 7px 9px;
+    font-size: 12px;
 }}
 
 /* ---------- Tipografía por rol ---------- */
 QLabel {{ background: transparent; }}
-QLabel#TituloPagina {{ font-size: 26px; font-weight: 700; }}
-QLabel#SubtituloPagina {{ font-size: 14px; color: {C.TEXTO_SECUNDARIO}; }}
-QLabel#TituloTarjeta {{ font-size: 16px; font-weight: 700; }}
-QLabel#SubtituloTarjeta {{ font-size: 12px; color: {C.TEXTO_SECUNDARIO}; }}
-QLabel#ValorMetricaPequeno {{ font-size: 20px; font-weight: 700; }}
-QLabel#Etiqueta {{ font-size: 13px; color: {C.TEXTO}; }}
-QLabel#EtiquetaSecundaria {{ font-size: 12px; color: {C.TEXTO_SECUNDARIO}; }}
-QLabel#EtiquetaTenue {{ font-size: 11px; color: {C.TEXTO_TENUE}; }}
+QLabel#TituloPagina {{ font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }}
+QLabel#SubtituloPagina {{ font-size: 15px; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#TituloTarjeta {{ font-size: 17px; font-weight: 650; letter-spacing: -0.1px; }}
+QLabel#SubtituloTarjeta {{ font-size: 13px; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#ValorMetricaPequeno {{ font-family: {PILA_MONO}; font-size: 20px; font-weight: 700; }}
+QLabel#Etiqueta {{ font-size: 14px; color: {C.TEXTO}; }}
+QLabel#EtiquetaSecundaria {{ font-size: 13px; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#EtiquetaTenue {{ font-size: 12px; color: {C.TEXTO_TENUE}; }}
 QLabel#Seccion {{
-    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+    font-size: 11px; font-weight: 700; letter-spacing: 1.4px;
     color: {C.TEXTO_TENUE};
 }}
-QLabel#ValorMetrica {{ font-size: 26px; font-weight: 700; }}
-QLabel#ValorMetricaVacio {{ font-size: 22px; font-weight: 600; color: {C.TEXTO_TENUE}; }}
-QLabel#Mono {{ font-family: "{FUENTE_MONO}", "{FUENTE_MONO_RESPALDO}"; font-size: 13px; }}
-QLabel#Ayuda {{ font-size: 11px; color: {C.TEXTO_TENUE}; }}
-QLabel#Error {{ font-size: 12px; color: {C.ERROR}; }}
+QLabel#ValorMetrica {{ font-family: {PILA_MONO}; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }}
+QLabel#ValorMetricaVacio {{ font-family: {PILA_MONO}; font-size: 24px; font-weight: 600; color: {C.TEXTO_TENUE}; }}
+QLabel#Mono {{ font-family: {PILA_MONO}; font-size: 13px; }}
+QLabel#Ayuda {{ font-size: 12px; color: {C.TEXTO_TENUE}; }}
+QLabel#Error {{ font-size: 13px; color: {C.ERROR}; }}
 
 /* ---------- Contenedores ---------- */
 QFrame#Tarjeta {{
-    background: {C.PANEL};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1A2030, stop:0.18 {C.PANEL}, stop:1 {C.PANEL});
     border: 1px solid {C.BORDE};
+    border-top-color: {C.BRILLO_BORDE};
     border-radius: {RADIO_TARJETA}px;
 }}
 QFrame#TarjetaInterna {{
@@ -144,7 +155,7 @@ QFrame#TarjetaInterna {{
     border-radius: 12px;
 }}
 QFrame#EncabezadoPagina {{
-    background: {C.FONDO_LATERAL};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {C.FONDO_LATERAL}, stop:1 #0D111B);
     border: none;
     border-bottom: 1px solid {C.BORDE_SUAVE};
 }}
@@ -153,13 +164,14 @@ QFrame#Separador {{ background: {C.BORDE_SUAVE}; border: none; max-height: 1px; 
 QFrame#BarraEntrada {{
     background: {C.PANEL};
     border: 1px solid {C.BORDE};
-    border-radius: 18px;
+    border-top-color: {C.BRILLO_BORDE};
+    border-radius: 20px;
 }}
-QFrame#BarraEntrada[foco="true"] {{ border: 1px solid {rgba(C.ROJO, 0.75)}; }}
+QFrame#BarraEntrada[foco="true"] {{ border: 1px solid {rgba(C.ROJO, 0.75)}; background: #1A1F2E; }}
 QFrame#BarraEntrada[alerta="true"] {{ border: 1px solid {C.ERROR}; }}
 QPlainTextEdit#EntradaMensaje {{
     background: transparent; border: none; padding: 6px 4px;
-    font-family: "{FUENTE}"; font-size: 14px;
+    font-family: {PILA_UI}; font-size: 15px;
 }}
 QPlainTextEdit#EntradaMensaje:focus {{ border: none; }}
 
@@ -167,53 +179,55 @@ QPlainTextEdit#EntradaMensaje:focus {{ border: none; }}
 QFrame#MiniDato {{
     background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 10px;
 }}
-QLabel#MiniDatoTitulo {{ font-size: 11px; color: {C.TEXTO_SECUNDARIO}; }}
-QLabel#MiniDatoValor {{
-    font-family: "{FUENTE_MONO}", "{FUENTE_MONO_RESPALDO}"; font-size: 15px; font-weight: 700;
-}}
+QFrame#MiniDato:hover {{ border-color: {C.BORDE}; }}
+QLabel#MiniDatoTitulo {{ font-size: 12px; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#MiniDatoValor {{ font-family: {PILA_MONO}; font-size: 16px; font-weight: 700; }}
 QLabel#NumeroPaso {{
     background: {rgba(C.ROJO, 0.14)}; color: {C.ROJO_CLARO};
     border: 1px solid {rgba(C.ROJO, 0.45)}; border-radius: 10px;
-    font-size: 11px; font-weight: 700;
+    font-family: {PILA_MONO}; font-size: 11px; font-weight: 700;
 }}
-QLabel#TituloPaso {{ font-size: 12px; font-weight: 600; color: {C.TEXTO_SECUNDARIO}; }}
-QLabel#NoDisponible {{ font-size: 12px; font-style: italic; color: {C.TEXTO_TENUE}; }}
+QLabel#TituloPaso {{ font-size: 13px; font-weight: 600; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#NoDisponible {{ font-size: 13px; font-style: italic; color: {C.TEXTO_TENUE}; }}
 QPushButton#BotonDetalles {{
     background: transparent; border: 1px solid {C.BORDE}; border-radius: 9px;
-    padding: 5px 10px; font-size: 12px; font-weight: 600; color: {C.TEXTO_SECUNDARIO};
+    padding: 5px 11px; font-size: 12px; font-weight: 600; color: {C.TEXTO_SECUNDARIO};
 }}
 QPushButton#BotonDetalles:hover {{ color: {C.TEXTO}; border-color: {rgba(C.ROJO, 0.7)}; background: {rgba(C.ROJO, 0.08)}; }}
 QPushButton#BotonDetalles:checked {{ color: {C.TEXTO}; border-color: {rgba(C.ROJO, 0.7)}; background: {rgba(C.ROJO, 0.14)}; }}
+QPushButton#BotonDetalles:pressed {{ background: {rgba(C.ROJO, 0.20)}; }}
 
 /* ---------- Burbujas ---------- */
 QFrame#BurbujaEnviada {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                stop:0 {C.ROJO_SECUNDARIO}, stop:1 #861530);
-    border: 1px solid {rgba(C.ROJO_CLARO, 0.45)};
-    border-radius: 16px;
-    border-bottom-right-radius: 5px;
+                stop:0 #D42647, stop:0.55 {C.ROJO_SECUNDARIO}, stop:1 #8E1733);
+    border: 1px solid {rgba(C.ROJO_CLARO, 0.55)};
+    border-radius: 18px;
+    border-bottom-right-radius: 6px;
 }}
 QFrame#BurbujaRecibida {{
-    background: {C.PANEL};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1C2232, stop:1 {C.PANEL});
     border: 1px solid {C.BORDE};
-    border-radius: 16px;
-    border-top-left-radius: 5px;
+    border-top-color: {C.BRILLO_BORDE};
+    border-radius: 18px;
+    border-top-left-radius: 6px;
 }}
 QFrame#BurbujaSistema {{
     background: {rgba(C.ROJO, 0.10)};
     border: 1px solid {rgba(C.ROJO, 0.35)};
     border-radius: 12px;
 }}
-QLabel#TextoBurbuja {{ font-size: 14px; }}
+QLabel#TextoBurbuja {{ font-size: 15px; }}
 QLabel#AutorBurbuja {{ font-size: 13px; font-weight: 700; color: {C.ROJO_CLARO}; }}
-QLabel#HoraBurbuja {{ font-size: 11px; color: {rgba(C.TEXTO, 0.62)}; }}
+QLabel#HoraBurbuja {{ font-family: {PILA_MONO}; font-size: 11px; color: {rgba(C.TEXTO, 0.62)}; }}
 
 QLabel#SeparadorFecha {{
     background: {C.SUPERFICIE};
-    border: 1px solid {C.BORDE_SUAVE};
+    border: 1px solid {C.BORDE};
     border-radius: 13px;
     padding: 4px 16px;
     font-size: 12px;
+    font-weight: 600;
     color: {C.TEXTO_SECUNDARIO};
 }}
 
@@ -242,59 +256,69 @@ QLabel[chip="neutro"] {{
 /* ---------- Botones ---------- */
 QPushButton {{
     font-size: 13px;
+    font-weight: 600;
     border-radius: {RADIO_CONTROL}px;
     padding: 9px 16px;
     background: {C.SUPERFICIE};
     border: 1px solid {C.BORDE};
 }}
-QPushButton:hover {{ background: {C.SUPERFICIE_ALTA}; border-color: #3A4258; }}
-QPushButton:pressed {{ background: {C.PANEL}; }}
+QPushButton:hover {{ background: {C.SUPERFICIE_ALTA}; border-color: #3B4560; }}
+QPushButton:pressed {{ background: {C.PANEL}; border-color: {C.BORDE}; }}
+QPushButton:focus {{ border-color: {rgba(C.ROJO, 0.55)}; }}
 QPushButton:disabled {{ color: {C.TEXTO_TENUE}; background: {C.PANEL}; border-color: {C.BORDE_SUAVE}; }}
 
 QPushButton#BotonPrimario {{
-    font-size: 14px; font-weight: 700;
-    border: 1px solid {rgba(C.ROJO_CLARO, 0.6)};
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 {C.ROJO}, stop:1 #D61F45);
+    font-size: 14px; font-weight: 700; letter-spacing: 0.2px;
+    border: 1px solid {rgba(C.ROJO_CLARO, 0.65)};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                stop:0 {C.ROJO}, stop:1 {C.ROJO_SECUNDARIO});
     padding: 11px 18px;
 }}
 QPushButton#BotonPrimario:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 {C.ROJO_CLARO}, stop:1 #E8284F);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                stop:0 {C.ROJO_CLARO}, stop:1 #DD2A4D);
+    border-color: {rgba("#FFFFFF", 0.35)};
 }}
 QPushButton#BotonPrimario:pressed {{ background: {C.ROJO_OSCURO}; }}
 QPushButton#BotonPrimario:disabled {{
     background: {C.SUPERFICIE}; color: {C.TEXTO_TENUE}; border-color: {C.BORDE};
 }}
+QPushButton#BotonPrimario::menu-indicator {{ subcontrol-position: right center; right: 10px; }}
 
 QPushButton#BotonEnviar {{
-    border: none; border-radius: 14px; padding: 0;
+    border: 1px solid {rgba(C.ROJO_CLARO, 0.6)}; border-radius: 15px; padding: 0;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                stop:0 {C.ROJO}, stop:1 #C8173D);
+                stop:0 {C.ROJO}, stop:1 {C.ROJO_SECUNDARIO});
 }}
 QPushButton#BotonEnviar:hover {{ background: {C.ROJO_CLARO}; }}
 QPushButton#BotonEnviar:pressed {{ background: {C.ROJO_OSCURO}; }}
-QPushButton#BotonEnviar:disabled {{ background: {C.SUPERFICIE_ALTA}; }}
+QPushButton#BotonEnviar:disabled {{ background: {C.SUPERFICIE_ALTA}; border-color: {C.BORDE}; }}
 
 QPushButton#BotonFantasma {{
     background: transparent; border: 1px solid transparent;
     color: {C.TEXTO_SECUNDARIO}; padding: 7px 12px;
 }}
 QPushButton#BotonFantasma:hover {{ background: {C.SUPERFICIE}; color: {C.TEXTO}; border-color: {C.BORDE}; }}
+QPushButton#BotonFantasma:pressed {{ background: {C.PANEL}; }}
 
 QPushButton#Sugerencia {{
     background: {C.PANEL}; border: 1px solid {C.BORDE};
-    border-radius: 16px; padding: 7px 14px; font-size: 13px; color: {C.TEXTO_SECUNDARIO};
+    border-radius: 17px; padding: 8px 16px; font-size: 13px; font-weight: 500;
+    color: {C.TEXTO_SECUNDARIO};
 }}
-QPushButton#Sugerencia:hover {{ border-color: {rgba(C.ROJO, 0.7)}; color: {C.TEXTO}; }}
+QPushButton#Sugerencia:hover {{ border-color: {rgba(C.ROJO, 0.7)}; color: {C.TEXTO}; background: {rgba(C.ROJO, 0.08)}; }}
 
 QPushButton#Segmento {{
     background: transparent; border: none; border-radius: 8px;
-    padding: 7px 14px; color: {C.TEXTO_SECUNDARIO}; font-weight: 600;
+    padding: 7px 15px; color: {C.TEXTO_SECUNDARIO}; font-weight: 600;
 }}
-QPushButton#Segmento:checked {{ background: {C.SUPERFICIE_ALTA}; color: {C.TEXTO}; }}
+QPushButton#Segmento:hover {{ color: {C.TEXTO}; }}
+QPushButton#Segmento:checked {{
+    background: {C.SUPERFICIE_ALTA}; color: {C.TEXTO};
+    border-bottom: 2px solid {C.ROJO};
+}}
 QFrame#ContenedorSegmentos {{
-    background: {C.FONDO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 10px;
+    background: {C.CAMPO}; border: 1px solid {C.BORDE}; border-radius: 10px;
 }}
 
 /* ---------- Entradas ---------- */
@@ -302,25 +326,29 @@ QLineEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
     background: {C.CAMPO};
     border: 1px solid {C.BORDE};
     border-radius: {RADIO_CONTROL}px;
-    padding: 7px 10px;
-    font-size: 13px;
+    padding: 8px 11px;
+    font-size: 14px;
     selection-background-color: {C.ROJO_OSCURO};
+}}
+QLineEdit:hover, QPlainTextEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {{
+    border-color: #3B4560;
 }}
 QLineEdit:focus, QPlainTextEdit:focus, QSpinBox:focus,
 QDoubleSpinBox:focus, QComboBox:focus {{
     border: 1px solid {rgba(C.ROJO, 0.85)};
+    background: #10141F;
 }}
 QLineEdit#EntradaMensaje {{
     background: {C.FONDO}; border-radius: 14px; padding: 12px 16px; font-size: 14px;
 }}
 QLineEdit#EntradaMensaje[alerta="true"] {{ border: 1px solid {C.ROJO}; }}
-QPlainTextEdit {{ font-family: "{FUENTE_MONO}", "{FUENTE_MONO_RESPALDO}"; }}
+QPlainTextEdit {{ font-family: {PILA_MONO}; font-size: 13px; }}
 
-QSpinBox, QDoubleSpinBox {{ font-family: "{FUENTE_MONO}", "{FUENTE_MONO_RESPALDO}"; }}
+QSpinBox, QDoubleSpinBox {{ font-family: {PILA_MONO}; font-weight: 600; }}
 QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{ width: 0; border: none; }}
 
-QComboBox {{ padding-right: 30px; font-weight: 600; }}
+QComboBox {{ padding-right: 30px; font-family: {PILA_MONO}; font-weight: 700; }}
 QComboBox::drop-down {{
     subcontrol-origin: padding; subcontrol-position: center right;
     width: 28px; border: none;
@@ -331,10 +359,13 @@ QComboBox QAbstractItemView {{
     border: 1px solid {C.BORDE};
     border-radius: 8px;
     padding: 4px;
+    font-family: {PILA_MONO};
     selection-background-color: {rgba(C.ROJO, 0.30)};
     selection-color: {C.TEXTO};
 }}
+QComboBox QAbstractItemView::item {{ min-height: 26px; padding: 2px 10px; border-radius: 6px; }}
 
+QSlider {{ min-height: 22px; }}
 QSlider::groove:horizontal {{
     height: 6px; border-radius: 3px; background: {C.SUPERFICIE_ALTA};
 }}
@@ -343,10 +374,11 @@ QSlider::sub-page:horizontal {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {C.ROJO_OSCURO}, stop:1 {C.ROJO});
 }}
 QSlider::handle:horizontal {{
-    width: 16px; height: 16px; margin: -6px 0; border-radius: 8px;
+    width: 18px; height: 18px; margin: -7px 0; border-radius: 9px;
     background: {C.TEXTO}; border: 3px solid {C.ROJO};
 }}
 QSlider::handle:horizontal:hover {{ background: #FFFFFF; border-color: {C.ROJO_CLARO}; }}
+QSlider::handle:horizontal:pressed {{ background: {C.ROJO_CLARO}; border-color: #FFFFFF; }}
 
 /* ---------- Visor de bits ---------- */
 QTextBrowser#VisorBits {{
@@ -354,22 +386,28 @@ QTextBrowser#VisorBits {{
     border: 1px solid {C.BORDE_SUAVE};
     border-radius: 8px;
     padding: 4px 6px;
-    font-family: "{FUENTE_MONO}", "{FUENTE_MONO_RESPALDO}";
+    font-family: {PILA_MONO};
     font-size: 13px;
 }}
+QTextBrowser#VisorBits:hover {{ border-color: {C.BORDE}; }}
 
 /* ---------- Scroll ---------- */
 QScrollArea {{ background: transparent; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: {C.BORDE}; border-radius: 3px; min-height: 30px; }}
-QScrollBar::handle:vertical:hover {{ background: #3C4560; }}
+QScrollBar::handle:vertical:hover {{ background: #46506A; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
 QScrollBar::handle:horizontal {{ background: {C.BORDE}; border-radius: 3px; min-width: 30px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
-/* ---------- Diálogos ---------- */
+/* ---------- Menús y diálogos ---------- */
+QMenu {{
+    background: {C.PANEL}; border: 1px solid {C.BORDE}; border-radius: 10px; padding: 6px;
+}}
+QMenu::item {{ padding: 8px 14px; border-radius: 6px; font-size: 13px; }}
+QMenu::item:selected {{ background: {rgba(C.ROJO, 0.22)}; }}
 QDialog {{ background: {C.FONDO}; }}
 QMessageBox {{ background: {C.PANEL}; }}
 QMessageBox QLabel {{ font-size: 13px; }}

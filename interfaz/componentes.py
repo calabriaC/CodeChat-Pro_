@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import math
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
@@ -324,9 +325,15 @@ class BotonNavegacion(QAbstractButton):
         activo = self.isChecked()
 
         if activo:
+            # Resplandor discreto alrededor del elemento activo
+            for extra, alfa in ((4, 14), (2, 26)):
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(qcolor(C.ROJO, alfa))
+                p.drawRoundedRect(r.adjusted(-extra, -extra + 1, extra, extra - 1), 12 + extra, 12 + extra)
             grad = QLinearGradient(r.topLeft(), r.topRight())
             grad.setColorAt(0, qcolor(C.ROJO, 235))
-            grad.setColorAt(1, qcolor(C.ROJO_OSCURO, 150))
+            grad.setColorAt(0.6, qcolor(C.ROJO_SECUNDARIO, 200))
+            grad.setColorAt(1, qcolor(C.ROJO_OSCURO, 140))
             p.setPen(QPen(qcolor(C.ROJO_CLARO, 110), 1))
             p.setBrush(grad)
             p.drawRoundedRect(r, 12, 12)
@@ -569,11 +576,13 @@ class VisorBits(QTextBrowser):
         partes: list[str] = []
         tramo: list[str] = []
         estado_tramo = False
+        grupo = [0]   # índice del bloque actual: alterna el tono para leer por grupos
 
         def volcar():
             if not tramo:
                 return
             texto = "".join(tramo)
+            atenuado = bloque and grupo[0] % 2 == 1
             if estado_tramo == "empate":
                 partes.append(
                     f'<span style="color:{C.AMBAR}; background-color:#3D2E12; '
@@ -583,7 +592,10 @@ class VisorBits(QTextBrowser):
                     f'<span style="color:{C.ERROR}; background-color:#4A1222; '
                     f'font-weight:700;">{texto}</span>')
             elif color_iguales and referencia is not None:
-                partes.append(f'<span style="color:{color_iguales};">{texto}</span>')
+                tono = "#12A57A" if atenuado else color_iguales
+                partes.append(f'<span style="color:{tono};">{texto}</span>')
+            elif atenuado:
+                partes.append(f'<span style="color:#8D98B3;">{texto}</span>')
             else:
                 partes.append(texto)
             tramo.clear()
@@ -591,6 +603,7 @@ class VisorBits(QTextBrowser):
         for i, bit in enumerate(mostrados):
             if bloque and i and i % bloque == 0:
                 volcar()
+                grupo[0] += 1
                 partes.append(" ")
             if bit == "?":
                 distinto = "empate"
@@ -604,7 +617,7 @@ class VisorBits(QTextBrowser):
 
         if len(bits) > max_bits:
             partes.append(f' <span style="color:{C.TEXTO_TENUE};">… +{len(bits) - max_bits} bits</span>')
-        self.setHtml(f'<div style="color:#D3DAEA;">{"".join(partes)}</div>')
+        self.setHtml(f'<div style="color:#E2E7F3;">{"".join(partes)}</div>')
 
 
 class MapaBloques(QWidget):
@@ -724,32 +737,38 @@ class EstadoVacio(QWidget):
     sugerencia_elegida = Signal(str)
 
     def __init__(self, nombre_icono: str, titulo: str, descripcion: str,
-                 sugerencias: list[str] | None = None, extra: QWidget | None = None, parent=None):
+                 sugerencias: list[str] | None = None, extra: QWidget | None = None,
+                 logo: bool = False, parent=None):
         super().__init__(parent)
         caja = QVBoxLayout(self)
         caja.setContentsMargins(24, 24, 24, 24)
         caja.setSpacing(10)
         caja.addStretch(1)
 
-        circulo = QLabel()
-        circulo.setFixedSize(76, 76)
-        circulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        circulo.setPixmap(pixmap(nombre_icono, C.ROJO, 34))
-        circulo.setStyleSheet(
-            f"background: qradialgradient(cx:0.5, cy:0.5, radius:0.6, fx:0.5, fy:0.4,"
-            f" stop:0 {rgba(C.ROJO, 0.22)}, stop:1 {rgba(C.ROJO, 0.04)});"
-            f" border: 1px solid {rgba(C.ROJO, 0.35)}; border-radius: 38px;")
-        caja.addWidget(circulo, 0, Qt.AlignmentFlag.AlignHCenter)
-        caja.addSpacing(6)
+        if logo:
+            self._emblema = Logo(132, 96)
+        else:
+            self._emblema = QLabel()
+            self._emblema.setFixedSize(80, 80)
+            self._emblema.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._emblema.setPixmap(pixmap(nombre_icono, C.ROJO, 34))
+            self._emblema.setStyleSheet(
+                f"background: qradialgradient(cx:0.5, cy:0.5, radius:0.6, fx:0.5, fy:0.4,"
+                f" stop:0 {rgba(C.ROJO, 0.24)}, stop:1 {rgba(C.ROJO, 0.04)});"
+                f" border: 1px solid {rgba(C.ROJO, 0.40)}; border-radius: 40px;")
+        caja.addWidget(self._emblema, 0, Qt.AlignmentFlag.AlignHCenter)
+        caja.addSpacing(10)
 
         t = etiqueta(titulo, "TituloTarjeta")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setStyleSheet(f"font-size: {26 if logo else 20}px; font-weight: 700; letter-spacing: -0.3px;")
         caja.addWidget(t)
         d = etiqueta(descripcion, "EtiquetaSecundaria", ajustar=True)
         d.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        d.setFixedWidth(440)
+        d.setStyleSheet("font-size: 14px;")
+        d.setFixedWidth(480)
         d.ensurePolished()
-        d.setMinimumHeight(d.heightForWidth(440))
+        d.setMinimumHeight(d.heightForWidth(480))
         fila_d = QHBoxLayout()
         fila_d.addStretch(1)
         fila_d.addWidget(d)
@@ -773,6 +792,27 @@ class EstadoVacio(QWidget):
             caja.addSpacing(18)
             caja.addWidget(extra)
         caja.addStretch(2)
+
+    def paintEvent(self, _event):
+        """Ilustración discreta: anillos concéntricos con nodos, como una señal que se propaga."""
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        centro = QPointF(self._emblema.geometry().center())
+        for i, radio in enumerate((70, 112, 160, 214, 274)):
+            p.setPen(QPen(qcolor(C.ROJO if i < 2 else C.BORDE, 34 - i * 5), 1,
+                          Qt.PenStyle.SolidLine if i % 2 == 0 else Qt.PenStyle.DashLine))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawEllipse(centro, radio, radio)
+        p.setPen(Qt.PenStyle.NoPen)
+        for radio, angulo, color in ((112, -35, C.ROJO), (160, 205, C.AZUL), (214, -150, C.VERDE),
+                                     (160, 20, C.TEXTO_TENUE), (274, -60, C.ROJO)):
+            punto = QPointF(centro.x() + radio * math.cos(math.radians(angulo)),
+                            centro.y() + radio * math.sin(math.radians(angulo)))
+            p.setBrush(qcolor(color, 120))
+            p.drawEllipse(punto, 3.2, 3.2)
+            p.setBrush(qcolor(color, 30))
+            p.drawEllipse(punto, 8, 8)
+        p.end()
 
 
 # ===========================================================================

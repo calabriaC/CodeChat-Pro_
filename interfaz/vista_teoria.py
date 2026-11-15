@@ -72,6 +72,7 @@ class TarjetaConcepto(QFrame):
     def __init__(self, simbolo, nombre, formula, descripcion, color, parent=None):
         super().__init__(parent)
         self.setObjectName("Tarjeta")
+        self.setStyleSheet(f"QFrame#Tarjeta {{ border-top: 2px solid {rgba(color, 0.85)}; }}")
         caja = QVBoxLayout(self)
         caja.setContentsMargins(18, 16, 18, 16)
         caja.setSpacing(8)
@@ -103,7 +104,8 @@ class TarjetaConcepto(QFrame):
         formula_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         formula_lbl.setStyleSheet(
             f"background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 8px;"
-            f" padding: 9px 12px; color: {C.TEXTO}; font-size: 15px;"
+            f" border-left: 3px solid {rgba(color, 0.7)};"
+            f" padding: 10px 12px; color: {C.TEXTO}; font-size: 16px;"
             " font-family: 'Cambria Math', 'Cambria', 'Times New Roman', serif;")
         caja.addWidget(formula_lbl)
         caja.addWidget(etiqueta(descripcion, "EtiquetaSecundaria", ajustar=True))

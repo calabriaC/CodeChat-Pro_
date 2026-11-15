@@ -2,12 +2,14 @@
 
 from PySide6.QtCore import QSize, Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QApplication, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QApplication, QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QSpinBox,
+    QVBoxLayout, QWidget,
 )
 
 from interfaz import servicio
 from interfaz.componentes import (
-    AreaDesplazable, Chip, ControlProbabilidad, EncabezadoPagina, Tarjeta, TarjetaMetrica,
+    AreaDesplazable, Chip, ControlProbabilidad, ControlSegmentado, EncabezadoPagina, Tarjeta,
+    TarjetaMetrica,
     etiqueta, formato_ber, formato_p,
 )
 from interfaz.estado import EstadoApp
@@ -16,6 +18,8 @@ from interfaz.grafica import GraficaBarras, GraficaBER, Serie
 from interfaz.iconos import icono
 
 COLORES_N = {3: C.AZUL, 5: C.MORADO, 7: C.VERDE}
+MAX_CARACTERES_TEXTO = 2000      # evita entradas desmesuradas (el cálculo corre en un hilo)
+BITS_MUESTRA_PEQUENA = 1000      # por debajo, la BER medida varía mucho entre ejecuciones
 
 
 class TarjetaCodigo(Tarjeta):
@@ -62,6 +66,7 @@ class VistaAnalisis(QWidget):
         self.estado = estado
         self._resultados: list[dict] | None = None
         self._p_resultados: float | None = None
+        self._texto_resultados: str | None = None   # None → bits aleatorios
 
         caja = QVBoxLayout(self)
         caja.setContentsMargins(0, 0, 0, 0)
@@ -75,7 +80,23 @@ class VistaAnalisis(QWidget):
 
         # ---- Controles -------------------------------------------------
         controles = Tarjeta("Experimento comparativo", "actividad",
-                            "Ejecuta core.experimentos sobre una secuencia aleatoria de bits")
+                            "Ejecuta core.experimentos sobre bits aleatorios o sobre los bits UTF‑8 de un texto")
+        fila_origen = QHBoxLayout()
+        fila_origen.setSpacing(12)
+        fila_origen.addWidget(etiqueta("Mensaje de prueba", "Etiqueta"))
+        self.origen = ControlSegmentado(["Bits aleatorios", "Texto personalizado"])
+        fila_origen.addWidget(self.origen)
+        fila_origen.addStretch(1)
+        controles.cuerpo.addLayout(fila_origen)
+        self.texto = QPlainTextEdit()
+        self.texto.setPlaceholderText("Escribe el mensaje, por ejemplo: Hola, CodeChat Pro")
+        self.texto.setPlainText("Hola, CodeChat Pro")
+        self.texto.setFixedHeight(70)
+        self.texto.hide()
+        controles.cuerpo.addWidget(self.texto)
+        self.info_texto = etiqueta("", "Ayuda", ajustar=True)
+        self.info_texto.hide()
+        controles.cuerpo.addWidget(self.info_texto)
         fila = QHBoxLayout()
         fila.setSpacing(18)
         col_p = QVBoxLayout()
@@ -83,7 +104,9 @@ class VistaAnalisis(QWidget):
         self.control_p = ControlProbabilidad(estado.p)
         col_p.addWidget(self.control_p)
         fila.addLayout(col_p, 3)
-        col_l = QVBoxLayout()
+        self.columna_longitud = QWidget()
+        col_l = QVBoxLayout(self.columna_longitud)
+        col_l.setContentsMargins(0, 0, 0, 0)
         col_l.addWidget(etiqueta("Longitud del mensaje", "Etiqueta"))
         self.longitud = QSpinBox()
         self.longitud.setRange(1000, 200000)
@@ -92,7 +115,7 @@ class VistaAnalisis(QWidget):
         self.longitud.setSuffix(" bits")
         self.longitud.setAlignment(Qt.AlignmentFlag.AlignCenter)
         col_l.addWidget(self.longitud)
-        fila.addLayout(col_l, 1)
+        fila.addWidget(self.columna_longitud, 1)
         self.boton = QPushButton("  Ejecutar experimento")
         self.boton.setObjectName("BotonPrimario")
         self.boton.setIcon(icono("play", C.TEXTO, 18))
@@ -128,11 +151,11 @@ class VistaAnalisis(QWidget):
         graficas.setSpacing(16)
         t1 = Tarjeta("BER frente a la tasa", "grafica", "Medición experimental frente a la fórmula teórica")
         self.grafica_ber = GraficaBER()
-        self.grafica_ber.setMinimumHeight(320)
+        self.grafica_ber.setMinimumHeight(360)
         t1.cuerpo.addWidget(self.grafica_ber)
         t2 = Tarjeta("Comparación por código", "analisis", "BER sin código, con código y teórico")
         self.grafica_barras = GraficaBarras()
-        self.grafica_barras.setMinimumHeight(320)
+        self.grafica_barras.setMinimumHeight(360)
         t2.cuerpo.addWidget(self.grafica_barras)
         nota_log = ("Eje vertical en escala logarítmica. Una BER medida igual a 0 no puede "
                     "representarse en esa escala: se dibuja con un marcador hueco (o una barra "
@@ -157,20 +180,57 @@ class VistaAnalisis(QWidget):
         self._hilo: _HiloExperimento | None = None
 
         self.boton.clicked.connect(self.ejecutar)
+        self.origen.cambiado.connect(self._cambiar_origen)
+        self.texto.textChanged.connect(self._actualizar_info_texto)
         self.control_p.valor_cambiado.connect(lambda _p: self._actualizar())
         self._actualizar()
+
+    # ---- origen del mensaje -------------------------------------------
+    def _usa_texto(self) -> bool:
+        return self.origen.indice() == 1
+
+    def _cambiar_origen(self, _indice: int = 0) -> None:
+        texto = self._usa_texto()
+        self.texto.setVisible(texto)
+        self.info_texto.setVisible(texto)
+        self.columna_longitud.setVisible(not texto)
+        self._actualizar_info_texto()
+
+    def _actualizar_info_texto(self) -> None:
+        if not self._usa_texto():
+            return
+        texto = self.texto.toPlainText().strip()
+        bits = servicio.texto_a_bits(texto)
+        info = f"{len(texto)} caracteres → {len(bits)} bits UTF‑8 (máx. {MAX_CARACTERES_TEXTO} caracteres)."
+        if texto and len(bits) < BITS_MUESTRA_PEQUENA:
+            info += (" Muestra pequeña: la BER medida puede variar bastante entre ejecuciones y "
+                     "alejarse del valor teórico.")
+        self.info_texto.setText(info)
 
     def ejecutar(self) -> None:
         """Lanza el experimento en un hilo para no congelar la ventana."""
         if self._hilo is not None and self._hilo.isRunning():
             return
-        p, longitud = self.control_p.valor(), self.longitud.value()
+        p = self.control_p.valor()
+        texto, bits = None, None
+        if self._usa_texto():
+            texto = self.texto.toPlainText().strip()
+            if not texto:
+                self._al_fallar("escribe un texto; el campo está vacío.")
+                return
+            if len(texto) > MAX_CARACTERES_TEXTO:
+                self._al_fallar(f"el texto supera los {MAX_CARACTERES_TEXTO} caracteres.")
+                return
+            bits = servicio.texto_a_bits(texto)
+            longitud = len(bits)
+        else:
+            longitud = self.longitud.value()
         self.boton.setEnabled(False)
         self.boton.setText("  Ejecutando…")
         self.aviso.setStyleSheet("")
         self.aviso.setText(f"Simulando {longitud} bits para n = 3, 5 y 7…")
-        self._hilo = _HiloExperimento(p, longitud, self)
-        self._hilo.terminado.connect(lambda res: self._al_terminar(res, p, longitud))
+        self._hilo = _HiloExperimento(p, longitud, self, bits=bits)
+        self._hilo.terminado.connect(lambda res: self._al_terminar(res, p, longitud, texto))
         self._hilo.fallo.connect(self._al_fallar)
         self._hilo.finished.connect(self._restaurar_boton)
         self._hilo.start()
@@ -179,8 +239,10 @@ class VistaAnalisis(QWidget):
         self.boton.setEnabled(True)
         self.boton.setText("  Ejecutar experimento")
 
-    def _al_terminar(self, resultados: list, p: float, longitud: int) -> None:
+    def _al_terminar(self, resultados: list, p: float, longitud: int,
+                     texto: str | None = None) -> None:
         self._resultados, self._p_resultados, self._bits = resultados, p, longitud
+        self._texto_resultados = texto
         self._actualizar()
 
     def _al_fallar(self, mensaje: str) -> None:
@@ -204,6 +266,15 @@ class VistaAnalisis(QWidget):
         if res is not None and not vigente:
             self.aviso.setText(f"Los resultados mostrados corresponden a p = {formato_p(self._p_resultados)}. "
                                "Vuelve a ejecutar el experimento para el nuevo valor.")
+        elif res is not None and self._texto_resultados is not None:
+            muestra = self._texto_resultados
+            muestra = muestra if len(muestra) <= 80 else muestra[:77] + "…"
+            aviso = (f"Resultados para p = {formato_p(p)} con el texto «{muestra}» "
+                     f"({self._bits} bits originales UTF‑8).")
+            if self._bits < BITS_MUESTRA_PEQUENA:
+                aviso += (" Al ser una muestra pequeña, los resultados experimentales pueden variar "
+                          "entre ejecuciones.")
+            self.aviso.setText(aviso)
         elif res is not None:
             self.aviso.setText(f"Resultados para p = {formato_p(p)} con {self._bits} bits aleatorios.")
         elif not self.aviso.text().startswith("No se pudo"):
@@ -221,7 +292,9 @@ class VistaAnalisis(QWidget):
             return
 
         p_res = self._p_resultados
-        self.k_bits.set_valor(f"{self._bits:,}".replace(",", " "), "misma secuencia para cada n")
+        self.k_bits.set_valor(f"{self._bits:,}".replace(",", " "),
+                              "bits UTF‑8 del texto, iguales para cada n" if self._texto_resultados
+                              is not None else "misma secuencia para cada n")
         mejor = min(res, key=lambda r: r["ber_con_codigo"])
         self.k_mejor.set_valor(formato_ber(mejor["ber_con_codigo"]), f"n = {mejor['n']}")
         for r in res:
@@ -248,6 +321,9 @@ class VistaAnalisis(QWidget):
         mejor = orden[0]
         empatados = [r for r in res if r["ber_con_codigo"] == mejor["ber_con_codigo"]]
         lineas = []
+        if self._texto_resultados is not None:
+            lineas.append(f"• Mensaje: texto de {len(self._texto_resultados)} caracteres "
+                          f"({self._bits} bits UTF‑8), transmitido con n = 3, 5 y 7.")
         if len(empatados) > 1:
             lineas.append("• Varios códigos obtuvieron la misma BER medida tras decodificar ("
                           + ", ".join(f"n = {r['n']}" for r in empatados)
@@ -280,12 +356,12 @@ class _HiloExperimento(QThread):
     terminado = Signal(object)
     fallo = Signal(str)
 
-    def __init__(self, p: float, longitud: int, parent=None):
+    def __init__(self, p: float, longitud: int, parent=None, bits: str | None = None):
         super().__init__(parent)
-        self._p, self._longitud = p, longitud
+        self._p, self._longitud, self._bits = p, longitud, bits
 
     def run(self) -> None:
         try:
-            self.terminado.emit(servicio.experimentos(self._p, self._longitud))
+            self.terminado.emit(servicio.experimentos(self._p, self._longitud, bits=self._bits))
         except (ValueError, TypeError) as error:
             self.fallo.emit(str(error))

@@ -3,7 +3,7 @@
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from interfaz import servicio
@@ -70,7 +70,8 @@ class BarraLateral(QFrame):
         caja.setContentsMargins(18, 26, 18, 20)
         caja.setSpacing(6)
 
-        caja.addWidget(Logo(), 0, Qt.AlignmentFlag.AlignHCenter)
+        self._logo = Logo()
+        caja.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignHCenter)
         marca = QLabel(f"CodeChat <span style='color:{C.ROJO};'>Pro</span>")
         marca.setTextFormat(Qt.TextFormat.RichText)
         marca.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -116,6 +117,16 @@ class BarraLateral(QFrame):
         fondo.setColorAt(0, qcolor(C.FONDO_LATERAL))
         fondo.setColorAt(1, qcolor("#0A0B12"))
         p.fillRect(r, fondo)
+
+        # Halo suave detrás del logotipo
+        centro = QPointF(self._logo.geometry().center())
+        halo = QRadialGradient(centro, 120)
+        halo.setColorAt(0, qcolor(C.ROJO, 46))
+        halo.setColorAt(0.55, qcolor(C.ROJO, 12))
+        halo.setColorAt(1, qcolor(C.ROJO, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(halo)
+        p.drawEllipse(centro, 120, 120)
 
         # Ondas decorativas discretas (señal transmitida)
         base_y = r.height() * 0.66

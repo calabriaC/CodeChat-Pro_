@@ -1,12 +1,14 @@
 """Historial: transmisiones realizadas durante la sesión."""
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QApplication, QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QStackedWidget,
+    QVBoxLayout, QWidget,
 )
 
 from interfaz.componentes import (
-    AreaDesplazable, Chip, ControlSegmentado, DialogoDetalle, EncabezadoPagina, EstadoVacio,
+    AreaDesplazable, Chip, ChipEstado, ControlSegmentado, DialogoDetalle, EncabezadoPagina, EstadoVacio,
     TarjetaMetrica, etiqueta, formato_ber, formato_p,
 )
 from interfaz.estado import EstadoApp
@@ -46,7 +48,8 @@ class FilaHistorial(QFrame):
         textos = QVBoxLayout()
         textos.setSpacing(3)
         if r.texto is not None:
-            resumen = r.texto if len(r.texto) <= 70 else r.texto[:67] + "…"
+            plano = " ".join(r.texto.split())   # una sola línea en el listado
+            resumen = plano if len(plano) <= 70 else plano[:67] + "…"
         else:
             resumen = f"Secuencia de {len(r.bits_originales)} bits"
         textos.addWidget(etiqueta(resumen, "Etiqueta"))
@@ -62,16 +65,33 @@ class FilaHistorial(QFrame):
         ber.setMinimumWidth(110)
         ber.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         fila.addWidget(ber)
-        texto_estado, tipo = _ESTADOS[r.estado]
-        chip = Chip(texto_estado, tipo)
-        chip.setMinimumWidth(150)
-        chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        fila.addWidget(chip)
+        contenedor_estado = QWidget()
+        contenedor_estado.setFixedWidth(200)
+        ce = QHBoxLayout(contenedor_estado)
+        ce.setContentsMargins(0, 0, 0, 0)
+        ce.addWidget(ChipEstado(r.estado))
+        ce.addStretch(1)
+        fila.addWidget(contenedor_estado)
 
-        ver = QPushButton()
-        ver.setObjectName("BotonFantasma")
-        ver.setIcon(icono("expandir", C.TEXTO_SECUNDARIO, 16))
-        ver.setToolTip("Ver detalle de la transmisión")
+        copiar = QPushButton()
+        copiar.setObjectName("BotonFantasma")
+        copiar.setIcon(icono("copiar", C.TEXTO_SECUNDARIO, 16))
+        copiar.setToolTip("Copiar el mensaje recuperado" if r.texto is not None
+                          else "Copiar los bits recuperados")
+        copiar.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        def copiar_contenido():
+            QApplication.clipboard().setText(r.texto_recuperado if r.texto is not None else r.recuperado)
+            copiar.setIcon(icono("doble_check", C.VERDE, 16))
+            QTimer.singleShot(1200, lambda: copiar.setIcon(icono("copiar", C.TEXTO_SECUNDARIO, 16)))
+
+        copiar.clicked.connect(copiar_contenido)
+        fila.addWidget(copiar)
+
+        ver = QPushButton("  Detalles")
+        ver.setObjectName("BotonDetalles")
+        ver.setIcon(icono("expandir", C.TEXTO_SECUNDARIO, 14))
+        ver.setToolTip("Ver los detalles de transmisión")
         ver.setCursor(Qt.CursorShape.PointingHandCursor)
         ver.clicked.connect(lambda: DialogoDetalle(r, self.window()).exec())
         fila.addWidget(ver)
@@ -168,7 +188,12 @@ class VistaHistorial(QWidget):
             if item.widget():
                 item.widget().deleteLater()
         if not visibles:
-            self.pila.setCurrentWidget(self.vacio)
+            if todos:
+                lay.addWidget(etiqueta("Ninguna transmisión coincide con este filtro.", "EtiquetaSecundaria"))
+                lay.addStretch(1)
+                self.pila.setCurrentWidget(self.lista)
+            else:
+                self.pila.setCurrentWidget(self.vacio)
             return
         for r in reversed(visibles):
             lay.addWidget(FilaHistorial(r))

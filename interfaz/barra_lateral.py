@@ -7,7 +7,7 @@ from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from interfaz import servicio
-from interfaz.componentes import BotonNavegacion, Logo, etiqueta, icono_label
+from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, icono_label, separador
 from interfaz.estilos import ANCHO_BARRA_LATERAL, C, qcolor, rgba
 
 SECCIONES = [
@@ -33,6 +33,7 @@ class TarjetaCodigoActual(QFrame):
         caja.setContentsMargins(18, 16, 18, 16)
         caja.setSpacing(10)
         caja.addWidget(etiqueta("Código actual", "TituloTarjeta"))
+        caja.addWidget(separador())
 
         fila = QHBoxLayout()
         fila.setSpacing(12)
@@ -47,10 +48,12 @@ class TarjetaCodigoActual(QFrame):
         fila.addLayout(datos, 1)
         caja.addLayout(fila)
 
-    def actualizar(self, n: int) -> None:
+    def actualizar(self, n: int, p: float | None = None) -> None:
         par = servicio.parametros(n)
         filas = [("n", str(par["n"])), ("d<sub>min</sub>", str(par["distancia_minima"])),
                  ("t", str(par["errores_corregibles"])), ("R", f"{par['tasa']:.2f}")]
+        if p is not None:
+            filas.append(("p", formato_p(p)))
         self._valores.setText(
             "<table cellspacing='0' cellpadding='1'>" + "".join(
                 f"<tr><td style='color:{C.TEXTO_SECUNDARIO}; padding-right:10px;'>{k}</td>"
@@ -76,13 +79,19 @@ class BarraLateral(QFrame):
         sub = etiqueta("Mensajería con Teoría de Códigos", "EtiquetaSecundaria")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         caja.addWidget(sub)
-        caja.addSpacing(26)
+        caja.addSpacing(18)
+        caja.addWidget(separador())
+        caja.addSpacing(12)
+        seccion = etiqueta("NAVEGACIÓN", "Seccion")
+        seccion.setContentsMargins(10, 0, 0, 4)
+        caja.addWidget(seccion)
 
         self._grupo = QButtonGroup(self)
         self._grupo.setExclusive(True)
         self.botones: list[BotonNavegacion] = []
         for i, (texto, nombre_icono) in enumerate(SECCIONES):
             b = BotonNavegacion(texto, nombre_icono)
+            b.setToolTip(f"{texto}  (Ctrl+{i + 1})")
             self._grupo.addButton(b, i)
             self.botones.append(b)
             caja.addWidget(b)
@@ -90,6 +99,9 @@ class BarraLateral(QFrame):
         self._grupo.idClicked.connect(self.seccion_elegida.emit)
 
         caja.addStretch(1)
+        seccion_cfg = etiqueta("CONFIGURACIÓN ACTIVA", "Seccion")
+        seccion_cfg.setContentsMargins(10, 0, 0, 4)
+        caja.addWidget(seccion_cfg)
         self.tarjeta_codigo = TarjetaCodigoActual()
         caja.addWidget(self.tarjeta_codigo)
 

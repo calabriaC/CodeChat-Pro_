@@ -15,23 +15,26 @@ from PySide6.QtGui import QColor, QFont
 class C:
     """Colores de la aplicación (hex)."""
 
-    FONDO = "#090B12"
-    FONDO_LATERAL = "#0C0E17"
-    PANEL = "#121622"
-    SUPERFICIE = "#1B2030"
-    SUPERFICIE_ALTA = "#232A3D"
-    ROJO = "#FF334A"
+    FONDO = "#090B12"            # fondo principal
+    FONDO_LATERAL = "#101420"    # barra lateral
+    PANEL = "#171C2A"            # tarjetas
+    SUPERFICIE = "#1E2436"       # superficies dentro de tarjetas
+    SUPERFICIE_ALTA = "#283048"  # hover / elementos elevados
+    CAMPO = "#0E121C"            # fondo de campos y visores
+    ROJO = "#FF334A"             # acento principal
+    ROJO_SECUNDARIO = "#C91E40"
     ROJO_CLARO = "#FF5A6D"
     ROJO_OSCURO = "#9F1732"
     AZUL = "#46A6FF"
-    VERDE = "#19D99A"
-    AMBAR = "#FFB547"
+    VERDE = "#19D99A"            # éxito
+    AMBAR = "#FFB547"            # advertencia
+    ERROR = "#FF5263"            # error
     MORADO = "#A274FF"
     TEXTO = "#F5F7FF"
-    TEXTO_SECUNDARIO = "#9CA6BA"
-    TEXTO_TENUE = "#6B7488"
-    BORDE = "#2B3143"
-    BORDE_SUAVE = "#20263A"
+    TEXTO_SECUNDARIO = "#A3ADBF"
+    TEXTO_TENUE = "#717B90"
+    BORDE = "#2A3040"
+    BORDE_SUAVE = "#222838"
 
 
 def qcolor(hex_color: str, alfa: int = 255) -> QColor:
@@ -115,6 +118,7 @@ QLabel#TituloPagina {{ font-size: 26px; font-weight: 700; }}
 QLabel#SubtituloPagina {{ font-size: 14px; color: {C.TEXTO_SECUNDARIO}; }}
 QLabel#TituloTarjeta {{ font-size: 16px; font-weight: 700; }}
 QLabel#SubtituloTarjeta {{ font-size: 12px; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#ValorMetricaPequeno {{ font-size: 20px; font-weight: 700; }}
 QLabel#Etiqueta {{ font-size: 13px; color: {C.TEXTO}; }}
 QLabel#EtiquetaSecundaria {{ font-size: 12px; color: {C.TEXTO_SECUNDARIO}; }}
 QLabel#EtiquetaTenue {{ font-size: 11px; color: {C.TEXTO_TENUE}; }}
@@ -126,21 +130,21 @@ QLabel#ValorMetrica {{ font-size: 26px; font-weight: 700; }}
 QLabel#ValorMetricaVacio {{ font-size: 22px; font-weight: 600; color: {C.TEXTO_TENUE}; }}
 QLabel#Mono {{ font-family: "{FUENTE_MONO}", "{FUENTE_MONO_RESPALDO}"; font-size: 13px; }}
 QLabel#Ayuda {{ font-size: 11px; color: {C.TEXTO_TENUE}; }}
-QLabel#Error {{ font-size: 12px; color: {C.ROJO_CLARO}; }}
+QLabel#Error {{ font-size: 12px; color: {C.ERROR}; }}
 
 /* ---------- Contenedores ---------- */
 QFrame#Tarjeta {{
     background: {C.PANEL};
-    border: 1px solid {C.BORDE_SUAVE};
+    border: 1px solid {C.BORDE};
     border-radius: {RADIO_TARJETA}px;
 }}
 QFrame#TarjetaInterna {{
-    background: {C.FONDO};
+    background: {C.CAMPO};
     border: 1px solid {C.BORDE_SUAVE};
     border-radius: 12px;
 }}
 QFrame#EncabezadoPagina {{
-    background: {C.PANEL};
+    background: {C.FONDO_LATERAL};
     border: none;
     border-bottom: 1px solid {C.BORDE_SUAVE};
 }}
@@ -148,20 +152,49 @@ QFrame#Separador {{ background: {C.BORDE_SUAVE}; border: none; max-height: 1px; 
 
 QFrame#BarraEntrada {{
     background: {C.PANEL};
-    border: 1px solid {C.BORDE_SUAVE};
+    border: 1px solid {C.BORDE};
     border-radius: 18px;
 }}
+QFrame#BarraEntrada[foco="true"] {{ border: 1px solid {rgba(C.ROJO, 0.75)}; }}
+QFrame#BarraEntrada[alerta="true"] {{ border: 1px solid {C.ERROR}; }}
+QPlainTextEdit#EntradaMensaje {{
+    background: transparent; border: none; padding: 6px 4px;
+    font-family: "{FUENTE}"; font-size: 14px;
+}}
+QPlainTextEdit#EntradaMensaje:focus {{ border: none; }}
+
+/* ---------- Detalle de transmisión ---------- */
+QFrame#MiniDato {{
+    background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 10px;
+}}
+QLabel#MiniDatoTitulo {{ font-size: 11px; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#MiniDatoValor {{
+    font-family: "{FUENTE_MONO}", "{FUENTE_MONO_RESPALDO}"; font-size: 15px; font-weight: 700;
+}}
+QLabel#NumeroPaso {{
+    background: {rgba(C.ROJO, 0.14)}; color: {C.ROJO_CLARO};
+    border: 1px solid {rgba(C.ROJO, 0.45)}; border-radius: 10px;
+    font-size: 11px; font-weight: 700;
+}}
+QLabel#TituloPaso {{ font-size: 12px; font-weight: 600; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#NoDisponible {{ font-size: 12px; font-style: italic; color: {C.TEXTO_TENUE}; }}
+QPushButton#BotonDetalles {{
+    background: transparent; border: 1px solid {C.BORDE}; border-radius: 9px;
+    padding: 5px 10px; font-size: 12px; font-weight: 600; color: {C.TEXTO_SECUNDARIO};
+}}
+QPushButton#BotonDetalles:hover {{ color: {C.TEXTO}; border-color: {rgba(C.ROJO, 0.7)}; background: {rgba(C.ROJO, 0.08)}; }}
+QPushButton#BotonDetalles:checked {{ color: {C.TEXTO}; border-color: {rgba(C.ROJO, 0.7)}; background: {rgba(C.ROJO, 0.14)}; }}
 
 /* ---------- Burbujas ---------- */
 QFrame#BurbujaEnviada {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                stop:0 #A51C38, stop:1 #6E1026);
-    border: 1px solid {rgba(C.ROJO, 0.45)};
+                stop:0 {C.ROJO_SECUNDARIO}, stop:1 #861530);
+    border: 1px solid {rgba(C.ROJO_CLARO, 0.45)};
     border-radius: 16px;
     border-bottom-right-radius: 5px;
 }}
 QFrame#BurbujaRecibida {{
-    background: {C.SUPERFICIE};
+    background: {C.PANEL};
     border: 1px solid {C.BORDE};
     border-radius: 16px;
     border-top-left-radius: 5px;
@@ -172,8 +205,8 @@ QFrame#BurbujaSistema {{
     border-radius: 12px;
 }}
 QLabel#TextoBurbuja {{ font-size: 14px; }}
-QLabel#AutorBurbuja {{ font-size: 13px; font-weight: 700; }}
-QLabel#HoraBurbuja {{ font-size: 11px; color: {rgba(C.TEXTO, 0.65)}; }}
+QLabel#AutorBurbuja {{ font-size: 13px; font-weight: 700; color: {C.ROJO_CLARO}; }}
+QLabel#HoraBurbuja {{ font-size: 11px; color: {rgba(C.TEXTO, 0.62)}; }}
 
 QLabel#SeparadorFecha {{
     background: {C.SUPERFICIE};
@@ -190,8 +223,8 @@ QLabel[chip="exito"] {{
     border: 1px solid {rgba(C.VERDE, 0.45)}; border-radius: 8px; padding: 3px 10px;
 }}
 QLabel[chip="error"] {{
-    background: {rgba(C.ROJO, 0.13)}; color: {C.ROJO_CLARO};
-    border: 1px solid {rgba(C.ROJO, 0.45)}; border-radius: 8px; padding: 3px 10px;
+    background: {rgba(C.ERROR, 0.13)}; color: {C.ERROR};
+    border: 1px solid {rgba(C.ERROR, 0.45)}; border-radius: 8px; padding: 3px 10px;
 }}
 QLabel[chip="info"] {{
     background: {rgba(C.AZUL, 0.12)}; color: {C.AZUL};
@@ -266,7 +299,7 @@ QFrame#ContenedorSegmentos {{
 
 /* ---------- Entradas ---------- */
 QLineEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-    background: {C.FONDO};
+    background: {C.CAMPO};
     border: 1px solid {C.BORDE};
     border-radius: {RADIO_CONTROL}px;
     padding: 7px 10px;
@@ -317,7 +350,7 @@ QSlider::handle:horizontal:hover {{ background: #FFFFFF; border-color: {C.ROJO_C
 
 /* ---------- Visor de bits ---------- */
 QTextBrowser#VisorBits {{
-    background: {C.FONDO};
+    background: {C.CAMPO};
     border: 1px solid {C.BORDE_SUAVE};
     border-radius: 8px;
     padding: 4px 6px;

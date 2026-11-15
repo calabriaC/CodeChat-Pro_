@@ -111,7 +111,9 @@ class ResultadoTransmision:
 
     @property
     def estado(self) -> str:
-        """'sin_errores' | 'corregido' | 'residual'."""
+        """'sin_errores' | 'corregido' | 'residual' | 'ambiguo'."""
+        if "?" in self.recuperado:   # empate en la decodificación por mayoría
+            return "ambiguo"
         if not self.exito:
             return "residual"
         return "corregido" if self.errores_canal else "sin_errores"

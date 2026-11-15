@@ -20,7 +20,7 @@ class VentanaPrincipal(QMainWindow):
         self.setWindowTitle("CodeChat Pro")
         self.setWindowIcon(QIcon(pixmap_logo(64)))
         self.resize(1440, 850)
-        self.setMinimumSize(1180, 720)
+        self.setMinimumSize(1240, 700)
 
         self.estado = EstadoApp(self)
 
@@ -48,10 +48,10 @@ class VentanaPrincipal(QMainWindow):
 
         # Señales
         self.barra.seccion_elegida.connect(self.ir_a)
-        self.estado.configuracion_cambiada.connect(lambda n, _p: self.barra.tarjeta_codigo.actualizar(n))
+        self.estado.configuracion_cambiada.connect(self.barra.tarjeta_codigo.actualizar)
         self.estado.transmision_registrada.connect(lambda _r: self._actualizar_insignia())
         self.estado.historial_limpiado.connect(self._actualizar_insignia)
-        self.barra.tarjeta_codigo.actualizar(self.estado.n)
+        self.barra.tarjeta_codigo.actualizar(self.estado.n, self.estado.p)
 
         # Atajos Ctrl+1 … Ctrl+5
         for i in range(self.paginas.count()):

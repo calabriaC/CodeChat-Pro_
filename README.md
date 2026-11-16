@@ -70,3 +70,15 @@ El módulo Análisis permite contrastar estos resultados con simulaciones experi
 - **Git y GitHub:** control de versiones y gestión del código fuente.
 - **Asistentes de programación con IA Chat-GPT Y Claude:** apoyo en propuestas de diseño, rediseño de la interfaz y ajustes visuales.
 - Python donde se desarrollo la aplicación.
+
+## 6. Referencias bibliográficas
+
+[1] D. H. Johnson, “Códigos de repetición,” *LibreTexts Español*. [En línea]. Disponible: https://espanol.libretexts.org/Bookshelves/Ingenieria/Ingenieria_Electrica_%28Johnson%29/06%3A_Comunicaci%C3%B3n_de_la_informaci%C3%B3n/6.25%3A_C%C3%B3digos_de_repetici%C3%B3n
+
+[2] E. W. Weisstein, “Binary Symmetric Channel,” *MathWorld—A Wolfram Resource*. [En línea]. Disponible: https://mathworld.wolfram.com/BinarySymmetricChannel.html
+
+[3] Massachusetts Institute of Technology, “Lecture 18: Transmitting Information Reliably over a Noisy Channel & Shannon’s Noisy Coding Theorem,” *MIT OpenCourseWare*, 2024. [En línea]. Disponible: https://ocw.mit.edu/courses/18-200-principles-of-discrete-applied-mathematics-spring-2024/resources/18200-lecture-18-version-2_mp4/
+
+[4] T. M. Cover y J. A. Thomas, *Elements of Information Theory*, 2.ª ed. Hoboken, NJ, EE. UU.: Wiley, 2006. [En línea]. Disponible: https://www.wiley.com/en-us/Elements+of+Information+Theory%2C+2nd+Edition-p-9780471241959
+
+[5] Universidad del Norte, *Proyecto final: Aplicaciones de la Teoría de Códigos: ponencia y aplicativo*, guía académica de Teoría de Códigos (MAT 4215), 2026. Material proporcionado por el profesor Iván Y. Gómez G.

@@ -1,5 +1,5 @@
 # CodeChat-Pro_
-# CodeChat Pro
+
 
 **Proyecto final de Teoría de Códigos — Tema 6: Canal Binario Simétrico (BSC)**
 
@@ -68,5 +68,5 @@ El módulo Análisis permite contrastar estos resultados con simulaciones experi
 - **PySide6 y Matplotlib:** construcción de la interfaz gráfica y visualización de resultados.
 - **JSON:** almacenamiento del historial de transmisiones.
 - **Git y GitHub:** control de versiones y gestión del código fuente.
-- **Asistentes de programación con IA:** apoyo en propuestas de diseño, rediseño de la interfaz y ajustes visuales.
+- **Asistentes de programación con IA Chat-GPT Y Claude:** apoyo en propuestas de diseño, rediseño de la interfaz y ajustes visuales.
 - Python donde se desarrollo la aplicación.

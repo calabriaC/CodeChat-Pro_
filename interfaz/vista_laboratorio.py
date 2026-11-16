@@ -15,9 +15,65 @@ from interfaz.componentes import (
 from interfaz.estado import EstadoApp
 from interfaz.estilos import C
 from interfaz.iconos import icono
+from interfaz.componentes import icono_label
 
 MAX_BITS = 20000
 MAX_CARACTERES = 500
+
+
+class _NodoProceso(QWidget):
+    """Nodo hexagonal con icono y nombre (diagrama del laboratorio)."""
+
+    def __init__(self, nombre_icono: str, titulo: str, color: str, parent=None):
+        super().__init__(parent)
+        self._color = color
+        self.setMinimumWidth(110)
+        caja = QVBoxLayout(self)
+        caja.setContentsMargins(0, 6, 0, 4)
+        caja.setSpacing(8)
+        self._icono = icono_label(nombre_icono, color, 26)
+        self._icono.setFixedSize(60, 60)
+        caja.addWidget(self._icono, 0, Qt.AlignmentFlag.AlignHCenter)
+        t = etiqueta(titulo, "Etiqueta")
+        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setStyleSheet("font-size: 13px; font-weight: 600;")
+        caja.addWidget(t)
+
+    def paintEvent(self, _event):
+        import math
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QPainter, QPainterPath, QPen
+        from interfaz.estilos import qcolor
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        c = QPointF(self._icono.geometry().center())
+        for radio, alfa, ancho in ((34, 40, 4), (31, 255, 1.4)):
+            ruta = QPainterPath()
+            for i, a in enumerate(range(-90, 270, 60)):
+                q = QPointF(c.x() + radio * math.cos(math.radians(a)), c.y() + radio * math.sin(math.radians(a)))
+                ruta.moveTo(q) if i == 0 else ruta.lineTo(q)
+            ruta.closeSubpath()
+            p.setPen(QPen(qcolor(self._color, alfa), ancho))
+            p.setBrush(qcolor(self._color, 22) if ancho < 2 else Qt.BrushStyle.NoBrush)
+            p.drawPath(ruta)
+        p.end()
+
+
+class DiagramaProceso(Tarjeta):
+    """Entrada → Codificación → Canal BSC → Decodificación (ilustración del proceso)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent, margen=16, espaciado=6)
+        fila = QHBoxLayout()
+        fila.setSpacing(4)
+        nodos = [("texto", "Entrada", C.AZUL), ("capas", "Codificación", C.AZUL),
+                 ("antena", "Canal BSC", C.ROJO), ("escudo", "Decodificación", C.VERDE)]
+        for i, (ic, nombre, color) in enumerate(nodos):
+            fila.addWidget(_NodoProceso(ic, nombre, color), 1)
+            if i < len(nodos) - 1:
+                fila.addWidget(icono_label("flecha_derecha", C.AZUL if i < 1 else C.ROJO, 22),
+                               0, Qt.AlignmentFlag.AlignVCenter)
+        self.cuerpo.addLayout(fila)
 
 
 class TablaComparacion(Tarjeta):
@@ -194,6 +250,9 @@ class VistaLaboratorio(QWidget):
         self.pila.addWidget(self.vacio)
         self.pila.addWidget(self.resultados)
         cuerpo.addWidget(self.pila, 1)
+
+        # Diagrama técnico del proceso simulado
+        self.resultados.layout_interno.addWidget(DiagramaProceso())
 
         # Resumen compacto (las etapas se ven en el panel inferior)
         rejilla = QGridLayout()

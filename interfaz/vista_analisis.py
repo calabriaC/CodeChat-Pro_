@@ -28,7 +28,8 @@ class TarjetaCodigo(Tarjeta):
     def __init__(self, n: int, parent=None):
         super().__init__(parent=parent, margen=16, espaciado=8)
         color = COLORES_N.get(n, C.ROJO)
-        self.setStyleSheet(f"QFrame#Tarjeta {{ border-top: 3px solid {color}; }}")
+        self.acento_a = color   # color del código en el marco técnico
+        self.acento_b = None
         cab = QHBoxLayout()
         titulo = etiqueta(f"Repetición n = {n}", "TituloTarjeta")
         cab.addWidget(titulo)

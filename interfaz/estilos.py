@@ -13,32 +13,33 @@ from PySide6.QtGui import QColor, QFont
 # Paleta
 # ---------------------------------------------------------------------------
 class C:
-    """Colores de la aplicación (hex), según la referencia visual."""
+    """Colores de la aplicación (hex) — identidad «Signal Lab»."""
 
-    FONDO = "#090D17"            # fondo principal
-    FONDO_VENTANA = "#0D111C"    # fondo de ventana
-    BARRA_SUPERIOR = "#111622"
-    FONDO_LATERAL = "#101522"    # barra lateral
-    PANEL = "#151B28"            # tarjetas principales
-    SUPERFICIE = "#1B2230"       # tarjetas secundarias
-    SUPERFICIE_ALTA = "#252D3D"  # hover / elementos elevados
-    CAMPO = "#1E2533"            # entradas de texto
-    CAMPO_OSCURO = "#111723"     # visores de bits y fondos hundidos
-    BRILLO_BORDE = "#3A4357"     # filo superior de las tarjetas (profundidad discreta)
-    ROJO = "#F43F4F"             # rojo principal
-    ROJO_SECUNDARIO = "#C9303F"
-    ROJO_CLARO = "#FF5263"       # rojo hover
-    ROJO_OSCURO = "#A92738"      # rojo oscuro
-    AZUL = "#55A8F8"             # informativo
-    VERDE = "#28D878"            # éxito
+    FONDO = "#060B16"            # fondo principal
+    FONDO_VENTANA = "#0B1424"    # fondo secundario
+    BARRA_SUPERIOR = "#0B1424"
+    FONDO_LATERAL = "#08101E"    # barra lateral
+    PANEL = "#0F192A"            # panel principal
+    SUPERFICIE = "#111E33"       # panel técnico
+    SUPERFICIE_ALTA = "#1A2A44"  # hover / elementos elevados
+    CAMPO = "#142037"            # superficie de entradas
+    CAMPO_OSCURO = "#0A1322"     # visores de bits y fondos hundidos
+    BRILLO_BORDE = "#2E4466"     # filo superior de las tarjetas
+    ROJO = "#F2384B"             # rojo principal
+    ROJO_SECUNDARIO = "#C42A3D"
+    ROJO_CLARO = "#FF5265"       # rojo brillante
+    ROJO_OSCURO = "#9E1F31"
+    AZUL_ELECTRICO = "#168BFF"   # azul eléctrico
+    AZUL = "#38B6FF"             # azul luminoso (datos, información)
+    VERDE = "#26D98A"            # éxito
     AMBAR = "#FFB547"            # advertencia
-    ERROR = "#FF5263"            # error
-    MORADO = "#A274FF"
+    ERROR = "#FF5265"            # error
+    MORADO = "#9C7BFF"
     TEXTO = "#F5F7FC"
-    TEXTO_SECUNDARIO = "#A9B3C4"
-    TEXTO_TENUE = "#758195"
-    BORDE = "#303849"            # bordes principales
-    BORDE_SUAVE = "#252D3C"      # bordes sutiles
+    TEXTO_SECUNDARIO = "#A6B7CF"
+    TEXTO_TENUE = "#6F819C"
+    BORDE = "#253752"            # bordes neutros
+    BORDE_SUAVE = "#1B2A41"      # bordes sutiles
 
 
 def qcolor(hex_color: str, alfa: int = 255) -> QColor:
@@ -59,8 +60,8 @@ def rgba(hex_color: str, alfa: float) -> str:
 # ---------------------------------------------------------------------------
 # Inter y JetBrains Mono se usan si están instaladas; si no, Qt recurre a las
 # alternativas del sistema (Segoe UI Variable / Segoe UI y Cascadia Mono / Consolas).
-FAMILIAS_UI = ["Inter", "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI"]
-FAMILIAS_MONO = ["JetBrains Mono", "Cascadia Mono", "Consolas", "Courier New"]
+FAMILIAS_UI = ["Inter", "Segoe UI"]
+FAMILIAS_MONO = ["JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Consolas", "Courier New"]
 FUENTE = FAMILIAS_UI[0]
 FUENTE_MONO = FAMILIAS_MONO[0]
 FUENTE_MONO_RESPALDO = "Consolas"
@@ -112,9 +113,10 @@ def hoja_estilos() -> str:
     outline: none;
 }}
 
-QMainWindow, QWidget#Raiz, QWidget#Pagina, QStackedWidget {{
+QMainWindow, QWidget#Raiz {{
     background: {C.FONDO};
 }}
+QWidget#Pagina, QStackedWidget {{ background: transparent; }}
 
 QToolTip {{
     background: {C.SUPERFICIE_ALTA};
@@ -147,10 +149,10 @@ QLabel#Error {{ font-size: 13px; color: {C.ERROR}; }}
 
 /* ---------- Contenedores ---------- */
 QFrame#Tarjeta {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1A2030, stop:0.18 {C.PANEL}, stop:1 {C.PANEL});
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #13213A, stop:0.2 {C.PANEL}, stop:1 {C.PANEL});
     border: 1px solid {C.BORDE};
     border-top-color: {C.BRILLO_BORDE};
-    border-radius: {RADIO_TARJETA}px;
+    border-radius: 6px;
 }}
 QFrame#TarjetaInterna {{
     background: {C.CAMPO_OSCURO};
@@ -176,8 +178,9 @@ QFrame#AccesoRapido {{
 QFrame#AccesoRapido:hover {{ border-color: {rgba(C.ROJO, 0.55)}; background: #181F2E; }}
 QFrame#SubTarjeta {{
     background: {C.SUPERFICIE};
-    border: 1px solid {C.BORDE_SUAVE};
-    border-radius: 12px;
+    border: 1px solid {C.BORDE};
+    border-left: 2px solid {rgba(C.AZUL_ELECTRICO, 0.75)};
+    border-radius: 5px;
 }}
 QLabel#CampoLectura {{
     background: {C.CAMPO}; border: 1px solid {C.BORDE}; border-radius: 8px;
@@ -188,21 +191,21 @@ QLabel#CajaValor {{
     padding: 5px 10px; font-family: {PILA_MONO}; font-size: 13px;
 }}
 QFrame#TarjetaTransmision {{
-    background: {C.SUPERFICIE};
-    border: 1px solid {C.BORDE};
-    border-radius: 14px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10203A, stop:1 {C.PANEL});
+    border: 1px solid {rgba(C.AZUL_ELECTRICO, 0.55)};
+    border-radius: 8px;
 }}
 QFrame#PanelEtapas, QFrame#PanelEstado {{
-    background: {C.PANEL};
-    border: 1px solid {C.BORDE_SUAVE};
-    border-radius: 11px;
+    background: {C.CAMPO_OSCURO};
+    border: 1px solid {C.BORDE};
+    border-radius: 6px;
 }}
 QFrame#Separador {{ background: {C.BORDE_SUAVE}; border: none; max-height: 1px; min-height: 1px; }}
 
 QFrame#BarraEntrada {{
     background: {C.PANEL};
-    border: 1px solid {C.BORDE};
-    border-radius: 14px;
+    border: 1px solid {rgba(C.ROJO, 0.55)};
+    border-radius: 8px;
 }}
 QFrame#BarraEntrada[foco="true"] {{ border: 1px solid {rgba(C.ROJO, 0.75)}; }}
 QFrame#BarraEntrada[alerta="true"] {{ border: 1px solid {C.ERROR}; }}
@@ -214,7 +217,7 @@ QPlainTextEdit#EntradaMensaje:focus {{ border: 1px solid {rgba(C.ROJO, 0.7)}; }}
 
 /* ---------- Detalle de transmisión ---------- */
 QFrame#MiniDato {{
-    background: {C.CAMPO_OSCURO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 10px;
+    background: {C.CAMPO_OSCURO}; border: 1px solid {C.BORDE}; border-radius: 5px;
 }}
 QFrame#MiniDato:hover {{ border-color: {C.BORDE}; }}
 QLabel#MiniDatoTitulo {{ font-size: 12px; color: {C.TEXTO_SECUNDARIO}; }}
@@ -237,14 +240,15 @@ QPushButton#BotonDetalles:pressed {{ background: {rgba(C.ROJO, 0.20)}; }}
 /* ---------- Burbujas ---------- */
 QFrame#BurbujaEnviada {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                stop:0 #B82A3B, stop:1 #8E1F31);
-    border: 1px solid {rgba(C.ROJO_CLARO, 0.55)};
-    border-radius: 14px;
+                stop:0 #1767D8, stop:1 #0B3577);
+    border: 1px solid {rgba(C.AZUL, 0.85)};
+    border-radius: 12px;
 }}
 QFrame#BurbujaRecibida {{
-    background: {C.SUPERFICIE};
-    border: 1px solid {C.BORDE};
-    border-radius: 14px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F1D33, stop:1 {C.PANEL});
+    border: 1px solid {rgba(C.ROJO, 0.65)};
+    border-left: 2px solid {C.ROJO};
+    border-radius: 10px;
 }}
 QFrame#BurbujaSistema {{
     background: {rgba(C.ROJO, 0.10)};
@@ -256,7 +260,7 @@ QLabel#AutorBurbuja {{ font-size: 16px; font-weight: 700; color: {C.TEXTO}; }}
 QLabel#HoraBurbuja {{ font-family: {PILA_MONO}; font-size: 11px; color: {rgba(C.TEXTO, 0.62)}; }}
 
 QLabel#SeparadorFecha {{
-    background: {C.SUPERFICIE};
+    background: {C.CAMPO};
     border: 1px solid {C.BORDE};
     border-radius: 13px;
     padding: 4px 16px;

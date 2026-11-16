@@ -21,6 +21,7 @@ from interfaz.estilos import (
     C, FUENTE_MONO, FUENTE_MONO_RESPALDO, fuente, fuente_mono, qcolor, rgba,
 )
 from interfaz.iconos import icono, pixmap
+from interfaz.marcos import pintar_marco
 
 
 # ===========================================================================
@@ -195,6 +196,16 @@ class Tarjeta(QFrame):
                 cabecera.addWidget(extra, 0, Qt.AlignmentFlag.AlignVCenter)
             self.cuerpo.addLayout(cabecera)
 
+    # Acentos del marco técnico (las subclases pueden cambiarlos)
+    acento_a: str | None = C.ROJO
+    acento_b: str | None = C.AZUL_ELECTRICO
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        pintar_marco(p, QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5), C.PANEL, C.BORDE,
+                     self.acento_a, self.acento_b, chaflan=12, largo_acento=38, marca=False)
+        p.end()
+
 
 class EncabezadoPagina(QFrame):
     """Cabecera superior de cada vista."""
@@ -214,6 +225,13 @@ class EncabezadoPagina(QFrame):
 
     def agregar(self, widget: QWidget) -> None:
         self.fila.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        # El margen coincide con el «margin» del QSS (14 arriba, 16 a los lados).
+        r = QRectF(self.rect()).adjusted(16.5, 14.5, -16.5, -1.5)
+        pintar_marco(p, r, C.PANEL, C.BORDE, C.ROJO, C.AZUL_ELECTRICO, chaflan=16, largo_acento=70)
+        p.end()
 
 
 class AreaDesplazable(QScrollArea):
@@ -336,10 +354,12 @@ class BotonNavegacion(QAbstractButton):
             grad.setColorAt(1, qcolor(C.ROJO_OSCURO, 140))
             p.setPen(QPen(qcolor(C.ROJO_CLARO, 110), 1))
             p.setBrush(grad)
-            p.drawRoundedRect(r, 12, 12)
+            p.drawRoundedRect(r, 9, 9)
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(qcolor("#FFFFFF", 235))
-            p.drawRoundedRect(QRectF(r.left() + 6, r.center().y() - 10, 4, 20), 2, 2)
+            for ancho, alfa in ((9, 40), (5, 90), (3, 255)):
+                p.setBrush(qcolor(C.AZUL, alfa))
+                p.drawRoundedRect(QRectF(r.left() + 1 - (ancho - 3) / 2, r.top() + 8, ancho, r.height() - 16),
+                                  ancho / 2, ancho / 2)
         elif self._hover:
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(qcolor(C.SUPERFICIE, 220))
@@ -414,8 +434,8 @@ def pintar_logo(p: QPainter, r: QRectF, con_texto: bool = False) -> None:
     p.drawEllipse(c, radio * 1.35, radio * 1.35)
 
     superior, izquierda, derecha = _caras_cubo(c, radio)
-    for ruta, claro, oscuro in ((superior, "#FF6B78", C.ROJO), (izquierda, C.ROJO, "#C3283A"),
-                                (derecha, "#B32234", "#7E1424")):
+    for ruta, claro, oscuro in ((superior, "#FF6B78", C.ROJO), (izquierda, C.ROJO, "#B8263A"),
+                                (derecha, "#2C8DFF", "#0B3F8A")):
         grad = QLinearGradient(ruta.boundingRect().topLeft(), ruta.boundingRect().bottomRight())
         grad.setColorAt(0, QColor(claro))
         grad.setColorAt(1, QColor(oscuro))

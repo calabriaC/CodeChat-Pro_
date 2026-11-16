@@ -1,16 +1,19 @@
-"""Barra lateral: logotipo, navegación e indicador de estado del sistema."""
-
-import math
+"""Barra lateral «Signal Lab»: logotipo, navegación, integrantes y estado del sistema."""
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from interfaz import servicio
-from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, pintar_logo
+from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, icono_label
 from interfaz.estilos import ANCHO_BARRA_LATERAL, C, qcolor, rgba
+from interfaz.marcos import PanelTecnico, TrazosDiagonales, pintar_ondas
 
 
+# ---------------------------------------------------------------------------
+# INTEGRANTES DEL EQUIPO
+# Escribe aquí los nombres, uno por línea, entre comillas y con una coma al final.
+# ---------------------------------------------------------------------------
 INTEGRANTES = [
     "Alberto Aponte",
     "Ethan Barreneche",
@@ -25,6 +28,29 @@ SECCIONES = [
     ("Teoría", "teoria"),
     ("Historial", "historial"),
 ]
+
+
+class _SeparadorLuminoso(QWidget):
+    """Línea roja con brillo que se desvanece hacia la derecha."""
+
+    def __init__(self, color: str = C.ROJO, parent=None):
+        super().__init__(parent)
+        self._color = color
+        self.setFixedHeight(6)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        y = self.height() / 2
+        for ancho, alfa in ((5, 30), (2.5, 80), (1.4, 255)):
+            grad = QLinearGradient(QPointF(0, y), QPointF(self.width(), y))
+            grad.setColorAt(0, qcolor(self._color, 0))
+            grad.setColorAt(0.25, qcolor(self._color, alfa))
+            grad.setColorAt(0.85, qcolor(self._color, alfa))
+            grad.setColorAt(1, qcolor(self._color, 0))
+            p.setPen(QPen(grad, ancho))
+            p.drawLine(QPointF(8, y), QPointF(self.width() - 8, y))
+        p.end()
 
 
 class _PuntoEstado(QWidget):
@@ -46,84 +72,54 @@ class _PuntoEstado(QWidget):
         p.end()
 
 
-class _ViñetaLogo(QWidget):
-    """Viñeta con el cubo del logotipo de CodeChat Pro."""
-
-    def __init__(self, lado: int = 20, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(lado, lado)
-
-    def paintEvent(self, _event):
-        p = QPainter(self)
-        pintar_logo(p, QRectF(self.rect()))
-        p.end()
-
-
 class TarjetaIntegrantes(QFrame):
-    """Tarjeta del equipo: cabecera con contador y un nombre por fila con el logotipo como viñeta."""
+    """Sección discreta con los integrantes del equipo."""
 
     def __init__(self, nombres: list[str], parent=None):
         super().__init__(parent)
-        self.setObjectName("TarjetaIntegrantes")
+        self.setObjectName("SeccionIntegrantes")
         self.setStyleSheet(f"""
-            QFrame#TarjetaIntegrantes {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                            stop:0 {rgba(C.PANEL, 0.88)}, stop:1 {rgba(C.FONDO_LATERAL, 0.80)});
-                border: 1px solid {C.BORDE};
-                border-top: 2px solid {rgba(C.ROJO, 0.75)};
-                border-radius: 14px;
-            }}
+            QFrame#SeccionIntegrantes {{ background: transparent; border: none; }}
             QFrame#FilaIntegrante {{ background: transparent; border: none;
-                                     border-top: 1px solid {C.BORDE_SUAVE}; border-radius: 0; }}""")
+                                     border-bottom: 1px solid {C.BORDE_SUAVE}; }}""")
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(14, 12, 14, 8)
+        caja.setContentsMargins(6, 4, 6, 4)
         caja.setSpacing(0)
-
         cab = QHBoxLayout()
-        cab.setSpacing(8)
+        cab.setSpacing(10)
+        cab.addWidget(icono_label("usuarios", C.TEXTO_SECUNDARIO, 18))
         titulo = etiqueta("INTEGRANTES", "Seccion")
-        titulo.setStyleSheet(f"color: {C.TEXTO_SECUNDARIO};")
-        cab.addWidget(titulo)
-        cab.addStretch(1)
-        contador = QLabel(str(len(nombres)))
-        contador.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        contador.setFixedSize(24, 20)
-        contador.setStyleSheet(f"background: {rgba(C.ROJO, 0.16)}; color: {C.ROJO_CLARO};"
-                               f" border: 1px solid {rgba(C.ROJO, 0.40)}; border-radius: 10px;"
-                               " font-size: 11px; font-weight: 700;")
-        cab.addWidget(contador)
+        titulo.setStyleSheet(f"color: {C.TEXTO_SECUNDARIO}; font-size: 12px;")
+        cab.addWidget(titulo, 1)
         caja.addLayout(cab)
-        caja.addSpacing(8)
-
-        for i, nombre in enumerate(nombres):
+        caja.addSpacing(6)
+        for nombre in nombres:
             fila = QFrame()
-            fila.setObjectName("FilaIntegrante" if i else "")
+            fila.setObjectName("FilaIntegrante")
             f = QHBoxLayout(fila)
-            f.setContentsMargins(2, 7, 2, 7)
-            f.setSpacing(11)
-            f.addWidget(_ViñetaLogo(20), 0, Qt.AlignmentFlag.AlignVCenter)
+            f.setContentsMargins(4, 7, 4, 7)
+            f.setSpacing(12)
+            f.addWidget(icono_label("usuario", C.ROJO, 18))
             lbl = etiqueta(nombre, "Etiqueta", ajustar=True)
-            lbl.setStyleSheet(f"color: {C.TEXTO}; font-size: 14px; font-weight: 500;")
+            lbl.setStyleSheet(f"color: {C.TEXTO}; font-size: 14px;")
             f.addWidget(lbl, 1)
             caja.addWidget(fila)
 
 
-class TarjetaCodigoActual(QFrame):
+class TarjetaCodigoActual(PanelTecnico):
     """Indicador inferior «Sistema listo» con los parámetros activos del canal."""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setObjectName("EstadoSistema")
-        self.setStyleSheet(f"QFrame#EstadoSistema {{ background: transparent; border: none;"
-                           f" border-top: 1px solid {C.BORDE_SUAVE}; }}")
+        super().__init__(parent, relleno=C.PANEL, borde="#1D4F8E",
+                         acento_a=None, acento_b=C.AZUL_ELECTRICO, chaflan=10, marca=False)
         fila = QHBoxLayout(self)
-        fila.setContentsMargins(8, 16, 4, 4)
+        fila.setContentsMargins(16, 14, 12, 14)
         fila.setSpacing(12)
         fila.addWidget(_PuntoEstado(), 0, Qt.AlignmentFlag.AlignTop)
         col = QVBoxLayout()
         col.setSpacing(3)
         titulo = etiqueta("Sistema listo", "Etiqueta")
-        titulo.setStyleSheet("font-size: 15px; font-weight: 600;")
+        titulo.setStyleSheet("font-size: 15px; font-weight: 700;")
         col.addWidget(titulo)
         self._valores = QLabel()
         self._valores.setTextFormat(Qt.TextFormat.RichText)
@@ -134,11 +130,12 @@ class TarjetaCodigoActual(QFrame):
 
     def actualizar(self, n: int, p: float | None = None) -> None:
         par = servicio.parametros(n)
-        detalle = (f"BSC activo &nbsp;·&nbsp; n = {par['n']}, t = {par['errores_corregibles']}, "
-                   f"R = {par['tasa']:.2f}")
+        separador = f"<span style='color:{C.TEXTO_TENUE};'>&nbsp;|&nbsp;</span>"
+        linea1 = f"BSC activo{separador}n = {par['n']} · t = {par['errores_corregibles']}"
+        linea2 = f"R = {par['tasa']:.2f}"
         if p is not None:
-            detalle += f" &nbsp;·&nbsp; p = {formato_p(p)}"
-        self._valores.setText(f"<span style='color:{C.TEXTO_SECUNDARIO};'>{detalle}</span>")
+            linea2 += f"{separador}p = {formato_p(p)}"
+        self._valores.setText(f"<span style='color:{C.TEXTO_SECUNDARIO};'>{linea1}<br>{linea2}</span>")
 
 
 class BarraLateral(QFrame):
@@ -148,28 +145,31 @@ class BarraLateral(QFrame):
         super().__init__(parent)
         self.setFixedWidth(ANCHO_BARRA_LATERAL)
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(16, 24, 16, 18)
+        caja.setContentsMargins(16, 22, 16, 16)
         caja.setSpacing(6)
 
         # ---- Marca ---------------------------------------------------------
         marca = QHBoxLayout()
-        marca.setSpacing(12)
-        self._logo = Logo(70, 70)
-        marca.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignTop)
+        marca.setSpacing(10)
+        self._logo = Logo(64, 64)
+        marca.addWidget(self._logo, 0, Qt.AlignmentFlag.AlignVCenter)
         textos = QVBoxLayout()
-        textos.setSpacing(2)
+        textos.setSpacing(0)
         nombre = QLabel(f"CodeChat <span style='color:{C.ROJO};'>Pro</span>")
         nombre.setTextFormat(Qt.TextFormat.RichText)
         nombre.setStyleSheet("font-size: 25px; font-weight: 800; letter-spacing: -0.4px;")
         textos.addWidget(nombre)
-        sub = QLabel("Mensajería con<br>Teoría de Códigos")
-        sub.setTextFormat(Qt.TextFormat.RichText)
-        sub.setStyleSheet(f"font-size: 15px; color: {C.TEXTO_SECUNDARIO};")
-        textos.addWidget(sub)
-        textos.addStretch(1)
+        fila_sub = QHBoxLayout()
+        fila_sub.setSpacing(10)
+        sub = QLabel("Signal Lab")
+        sub.setStyleSheet(f"font-size: 18px; color: {C.TEXTO_SECUNDARIO}; font-weight: 500;")
+        fila_sub.addWidget(sub)
+        fila_sub.addWidget(TrazosDiagonales(4), 0, Qt.AlignmentFlag.AlignVCenter)
+        fila_sub.addStretch(1)
+        textos.addLayout(fila_sub)
         marca.addLayout(textos, 1)
         caja.addLayout(marca)
-        caja.addSpacing(26)
+        caja.addSpacing(30)
 
         # ---- Navegación ----------------------------------------------------
         self._grupo = QButtonGroup(self)
@@ -185,11 +185,16 @@ class BarraLateral(QFrame):
         self.botones[0].setChecked(True)
         self._grupo.idClicked.connect(self.seccion_elegida.emit)
 
-        caja.addStretch(1)
+        caja.addSpacing(12)
+        caja.addWidget(_SeparadorLuminoso())
+        caja.addSpacing(14)
+
+        # ---- Integrantes ---------------------------------------------------
         if INTEGRANTES:
             caja.addWidget(TarjetaIntegrantes(INTEGRANTES))
-            # Espacio flexible: la tarjeta queda centrada entre el menú y «Sistema listo».
-            caja.addStretch(1)
+        caja.addStretch(1)
+
+        # ---- Estado --------------------------------------------------------
         self.tarjeta_codigo = TarjetaCodigoActual()
         caja.addWidget(self.tarjeta_codigo)
 
@@ -202,35 +207,24 @@ class BarraLateral(QFrame):
         r = QRectF(self.rect())
         fondo = QLinearGradient(r.topLeft(), r.bottomLeft())
         fondo.setColorAt(0, qcolor(C.FONDO_LATERAL))
-        fondo.setColorAt(1, qcolor("#0B0F1A"))
+        fondo.setColorAt(1, qcolor("#050913"))
         p.fillRect(r, fondo)
 
-        # Halo suave detrás del logotipo
+        # Halo detrás del logotipo
         centro = QPointF(self._logo.geometry().center())
-        halo = QRadialGradient(centro, 110)
-        halo.setColorAt(0, qcolor(C.ROJO, 40))
-        halo.setColorAt(0.55, qcolor(C.ROJO, 10))
-        halo.setColorAt(1, qcolor(C.ROJO, 0))
+        halo = QRadialGradient(centro, 100)
+        halo.setColorAt(0, qcolor(C.ROJO, 36))
+        halo.setColorAt(0.6, qcolor(C.AZUL_ELECTRICO, 10))
+        halo.setColorAt(1, qcolor(C.AZUL_ELECTRICO, 0))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(halo)
-        p.drawEllipse(centro, 110, 110)
+        p.drawEllipse(centro, 100, 100)
 
-        # Ondas decorativas en la parte inferior (señal transmitida)
-        base_y = r.height() * 0.78
-        for k in range(16):
-            ruta = QPainterPath()
-            fase = k * 0.16
-            amplitud = 24 + k * 2.4
-            for i in range(0, int(r.width()) + 8, 6):
-                x = float(i)
-                y = base_y - x * 0.22 + math.sin(x / 52 + fase) * amplitud * (0.35 + x / r.width())
-                if i == 0:
-                    ruta.moveTo(QPointF(x, y))
-                else:
-                    ruta.lineTo(QPointF(x, y))
-            p.setPen(QPen(qcolor(C.ROJO, 12 + k * 3), 1.1))
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawPath(ruta)
+        # Ondas: rojo → azul en la parte superior derecha y en la inferior
+        pintar_ondas(p, QRectF(r.left(), 0, r.width(), 160), 120, 10, C.ROJO, C.AZUL_ELECTRICO,
+                     38, pendiente=-0.25)
+        pintar_ondas(p, QRectF(r.left(), r.bottom() - 240, r.width(), 240), r.bottom() - 70, 16,
+                     C.ROJO, C.AZUL_ELECTRICO, 60, pendiente=-0.22)
 
         p.setPen(QPen(qcolor(C.BORDE_SUAVE), 1))
         p.drawLine(QPointF(r.right() - 0.5, 0), QPointF(r.right() - 0.5, r.bottom()))

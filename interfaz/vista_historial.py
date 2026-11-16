@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from interfaz.componentes import (
-    AreaDesplazable, Chip, ChipEstado, ControlSegmentado, EtiquetaRecortada, DialogoDetalle, EncabezadoPagina, EstadoVacio,
+    ESTADOS_TRANSMISION, AreaDesplazable, Chip, ChipEstado, ControlSegmentado, EtiquetaRecortada, DialogoDetalle, EncabezadoPagina, EstadoVacio,
     TarjetaMetrica, etiqueta, formato_ber, formato_p,
 )
 from interfaz import persistencia
@@ -27,10 +27,12 @@ class FilaHistorial(QFrame):
         self.setObjectName("FilaHistorial")
         self.setStyleSheet(f"""
             QFrame#FilaHistorial {{ background: {C.PANEL}; border: 1px solid {C.BORDE_SUAVE};
-                                    border-radius: 14px; }}
-            QFrame#FilaHistorial:hover {{ border-color: {rgba(C.ROJO, 0.55)}; }}""")
+                                    border-left: 3px solid {ESTADOS_TRANSMISION[r.estado][3]};
+                                    border-radius: 4px; }}
+            QFrame#FilaHistorial:hover {{ border-color: {rgba(C.AZUL, 0.55)};
+                                          border-left: 3px solid {ESTADOS_TRANSMISION[r.estado][3]}; }}""")
         fila = QHBoxLayout(self)
-        fila.setContentsMargins(16, 12, 14, 12)
+        fila.setContentsMargins(14, 9, 12, 9)
         fila.setSpacing(14)
 
         es_chat = r.origen == "chat"

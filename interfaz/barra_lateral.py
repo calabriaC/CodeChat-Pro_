@@ -7,7 +7,8 @@ from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QVBoxLa
 from interfaz import servicio
 from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, icono_label
 from interfaz.estilos import ANCHO_BARRA_LATERAL, C, qcolor, rgba
-from interfaz.marcos import PanelTecnico, TrazosDiagonales, pintar_ondas
+from interfaz.marcos import TrazosDiagonales, pintar_ondas
+from interfaz.marcos_globales import PanelSecundario
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +108,7 @@ class TarjetaIntegrantes(QFrame):
             caja.addWidget(fila)
 
 
-class TarjetaCodigoActual(PanelTecnico):
+class TarjetaCodigoActual(PanelSecundario):
     """Indicador inferior «Sistema listo» con los parámetros activos del canal."""
 
     def __init__(self, parent=None):

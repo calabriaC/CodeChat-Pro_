@@ -1,8 +1,11 @@
 """Teoría: conceptos del código de repetición y del canal BSC con ejemplos en vivo."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import (
+    QBrush, QColor, QFontDatabase, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient,
+)
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+    QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from interfaz import servicio
@@ -11,7 +14,9 @@ from interfaz.componentes import (
     SelectorN, Tarjeta, etiqueta, formato_ber, formato_p, icono_label, repulir,
 )
 from interfaz.estado import EstadoApp
-from interfaz.estilos import C, FUENTE_MONO_RESPALDO, rgba
+from interfaz.estilos import C, FAMILIAS_MATH, FAMILIAS_MONO, FAMILIAS_UI, FUENTE_MONO_RESPALDO, qcolor, rgba
+from interfaz.ilustraciones import Ilustracion, tiene_ilustracion
+from interfaz.marcos_globales import pintar_nivel2
 from interfaz.iconos import icono
 
 # (clave, símbolo, nombre, fórmula en HTML, descripción, color)
@@ -68,51 +73,139 @@ CONCEPTOS = [
 ]
 
 
+def _familias(preferidas: list[str], respaldo: list[str]) -> str:
+    """Pila de fuentes CSS con las preferidas solo si están instaladas (sin errores si faltan)."""
+    instaladas = set(QFontDatabase.families())
+    lista = [f for f in preferidas if f in instaladas] + list(respaldo)
+    return ", ".join(f"'{f}'" for f in dict.fromkeys(lista))
+
+
 class TarjetaConcepto(QFrame):
-    def __init__(self, simbolo, nombre, formula, descripcion, color, parent=None):
+    """Tarjeta de un concepto: ilustración, título, valor actual, fórmula y explicación."""
+
+    def __init__(self, simbolo, nombre, formula, descripcion, color, parent=None, clave: str | None = None):
         super().__init__(parent)
         self.setObjectName("Tarjeta")
-        self.setStyleSheet(f"QFrame#Tarjeta {{ border-top: 2px solid {rgba(color, 0.85)}; }}")
+        self.setProperty("acento", color)
+        self._color = color
+        self._hover = False
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        ui = _familias([], FAMILIAS_UI)          # Sora
+        mono = _familias([], FAMILIAS_MONO)      # JetBrains Mono
+        matematica = _familias([], FAMILIAS_MATH)   # STIX Two Math
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(18, 16, 18, 16)
-        caja.setSpacing(8)
-        cab = QHBoxLayout()
-        cab.setSpacing(14)
-        simbolo_lbl = QLabel(simbolo)
-        simbolo_lbl.setTextFormat(Qt.TextFormat.RichText)
-        simbolo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        simbolo_lbl.setFixedSize(58, 54)
-        largo = len(simbolo.replace("<i>", "").replace("</i>", "").replace("<sub>", "")
-                    .replace("</sub>", ""))
-        tam = 22 if largo <= 2 else 16 if largo <= 4 else 13
-        simbolo_lbl.setStyleSheet(
-            f"background: {rgba(color, 0.12)}; border: 1px solid {rgba(color, 0.45)};"
-            f" border-radius: 14px; color: {color}; font-size: {tam}px; font-weight: 800;"
-            " font-family: 'Cambria Math', 'Times New Roman', serif;")
-        cab.addWidget(simbolo_lbl)
-        textos = QVBoxLayout()
-        textos.setSpacing(2)
-        textos.addWidget(etiqueta(nombre, "TituloTarjeta", ajustar=True))
+        caja.setContentsMargins(18, 12, 18, 18)
+        caja.setSpacing(9)
+
+        # 1. Ilustración conceptual (o el símbolo, si el concepto no tiene dibujo)
+        if clave and tiene_ilustracion(clave):
+            # Sin halo propio: el resplandor lo pinta la tarjeta (uno solo, suave).
+            self.ilustracion = Ilustracion(clave, alto=112, halo=False)
+            caja.addWidget(self.ilustracion)
+        else:
+            self.ilustracion = None
+            simbolo_lbl = QLabel(simbolo)
+            simbolo_lbl.setTextFormat(Qt.TextFormat.RichText)
+            simbolo_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            simbolo_lbl.setFixedHeight(112)
+            simbolo_lbl.setStyleSheet(f"color: {color}; font-size: 34px; font-family: {matematica};")
+            caja.addWidget(simbolo_lbl)
+
+        # 2. Título
+        titulo = etiqueta(nombre, "TituloTarjeta", ajustar=True)
+        titulo.setStyleSheet(f"font-family: {ui}; font-size: 17px; font-weight: 600; color: {C.TEXTO};")
+        caja.addWidget(titulo)
+        subrayado = QFrame()            # línea roja corta bajo el título (referencia)
+        subrayado.setFixedSize(38, 3)
+        subrayado.setStyleSheet(f"background: {C.ROJO}; border-radius: 1px;")
+        caja.addWidget(subrayado)
+
+        # 3. Valor actual (dinámico, calculado por el núcleo)
         self.ejemplo = etiqueta("", "EtiquetaSecundaria", ajustar=True)
-        self.ejemplo.setStyleSheet(f"color: {color};")
-        textos.addWidget(self.ejemplo)
-        cab.addLayout(textos, 1)
-        caja.addLayout(cab)
+        self.ejemplo.setStyleSheet(f"font-family: {mono}; font-size: 12px; font-weight: 700; color: {color};"
+                                   f" background: {rgba(color, 0.08)}; border: 1px solid {rgba(color, 0.28)};"
+                                   " border-radius: 6px; padding: 4px 8px;")
+        caja.addWidget(self.ejemplo)
+
+        # 4. Fórmula
         formula_lbl = QLabel(formula)
+        formula_lbl.setObjectName("Formula")
+        formula_lbl.setProperty("acento", color)
         formula_lbl.setTextFormat(Qt.TextFormat.RichText)
         formula_lbl.setWordWrap(True)
         formula_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         formula_lbl.setStyleSheet(
-            f"background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 8px;"
-            f" border-left: 3px solid {rgba(color, 0.7)};"
-            f" padding: 10px 12px; color: {C.TEXTO}; font-size: 16px;"
-            " font-family: 'Cambria Math', 'Cambria', 'Times New Roman', serif;")
+            f"background: {C.CAMPO_OSCURO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 8px;"
+            f" border-left: 3px solid {rgba(color, 0.75)};"
+            f" padding: 9px 12px; color: {C.TEXTO}; font-size: 17px; font-family: {matematica};")
         caja.addWidget(formula_lbl)
-        caja.addWidget(etiqueta(descripcion, "EtiquetaSecundaria", ajustar=True))
+
+        # 5. Explicación
+        explicacion = etiqueta(descripcion, "EtiquetaSecundaria", ajustar=True)
+        explicacion.setStyleSheet(f"font-family: {ui}; font-size: 12.5px; font-weight: 400;"
+                                  f" color: {C.TEXTO_SECUNDARIO};")
+        caja.addWidget(explicacion)
         caja.addStretch(1)
 
     def set_ejemplo(self, texto: str) -> None:
         self.ejemplo.setText(texto)
+
+    # ---- marco y efecto al pasar el cursor -----------------------------
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5)
+        # Tarjeta común de la aplicación (marcos_globales.pintar_nivel2), realzada con el cursor
+        pintar_nivel2(p, r, "#0F1D33", "#22406A", realce=1.0 if self._hover else 0.25)
+        if self.ilustracion is not None:
+            zona = QRectF(self.ilustracion.geometry())
+            radio = min(zona.width() * 0.32, 120.0)
+            halo = QRadialGradient(zona.center(), radio)
+            halo.setColorAt(0, qcolor(self._color, 34 if self._hover else 18))
+            halo.setColorAt(1, qcolor(self._color, 0))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(halo)
+            p.drawEllipse(zona.center(), radio, zona.height() * 0.55)
+        p.end()
+
+
+class RejillaConceptos(QWidget):
+    """Rejilla adaptable: 3 columnas si hay espacio, 2 en ventanas medianas, 1 en estrechas."""
+
+    def __init__(self, tarjetas: list[QWidget], parent=None):
+        super().__init__(parent)
+        self._tarjetas = tarjetas
+        self._columnas = 0
+        self._rejilla = QGridLayout(self)
+        self._rejilla.setContentsMargins(0, 0, 0, 0)
+        self._rejilla.setSpacing(16)
+        self._colocar(3)
+
+    def _colocar(self, columnas: int) -> None:
+        if columnas == self._columnas:
+            return
+        self._columnas = columnas
+        for t in self._tarjetas:
+            self._rejilla.removeWidget(t)
+        for c in range(3):
+            self._rejilla.setColumnStretch(c, 1 if c < columnas else 0)
+        for i, t in enumerate(self._tarjetas):
+            self._rejilla.addWidget(t, i // columnas, i % columnas)
+
+    def resizeEvent(self, event):
+        ancho = event.size().width()
+        self._colocar(3 if ancho >= 960 else 2 if ancho >= 620 else 1)
+        super().resizeEvent(event)
 
 
 class Flujo(QWidget):
@@ -296,16 +389,10 @@ class VistaTeoria(QWidget):
 
         lay.addWidget(EjemploMayoria(estado))
 
-        rejilla = QGridLayout()
-        rejilla.setSpacing(14)
         self.tarjetas: dict[str, TarjetaConcepto] = {}
-        for i, (clave, simbolo, nombre, formula, desc, color) in enumerate(CONCEPTOS):
-            t = TarjetaConcepto(simbolo, nombre, formula, desc, color)
-            self.tarjetas[clave] = t
-            rejilla.addWidget(t, i // 3, i % 3)
-        for col in range(3):
-            rejilla.setColumnStretch(col, 1)
-        lay.addLayout(rejilla)
+        for clave, simbolo, nombre, formula, desc, color in CONCEPTOS:
+            self.tarjetas[clave] = TarjetaConcepto(simbolo, nombre, formula, desc, color, clave=clave)
+        lay.addWidget(RejillaConceptos(list(self.tarjetas.values())))
         lay.addStretch(1)
 
         self.selector_n.n_cambiado.connect(estado.establecer_n)

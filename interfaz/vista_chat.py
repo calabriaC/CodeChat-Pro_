@@ -122,7 +122,7 @@ class EntradaMensaje(QPlainTextEdit):
         self.ensurePolished()
         lineas = int(self.document().documentLayout().documentSize().height()) or 1
         lineas = max(1, min(lineas, LINEAS_MAXIMAS_ENTRADA))
-        alto = lineas * self.fontMetrics().lineSpacing() + 2 * 2 + 12 + 2
+        alto = lineas * self.fontMetrics().lineSpacing() + 2 * 2 + 18 + 2
         self.setFixedHeight(alto)
         self.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded if lineas >= LINEAS_MAXIMAS_ENTRADA
@@ -240,6 +240,7 @@ def _icono_fila(nombre: str, color: str = C.TEXTO_SECUNDARIO) -> QLabel:
     lbl.setFixedSize(30, 30)
     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     lbl.setPixmap(pixmap(nombre, color, 16))
+    lbl.setObjectName("Insignia")
     lbl.setStyleSheet(f"background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 8px;")
     return lbl
 
@@ -304,8 +305,9 @@ class _Etapa(QWidget):
         valor.setObjectName("Mono")
         valor.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {C.TEXTO};")
         caja.addWidget(valor)
-        n = etiqueta(nombre, "EtiquetaSecundaria")
+        n = etiqueta(nombre, "EtiquetaSecundaria", ajustar=True)   # admite 2 líneas si falta ancho
         n.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        n.setStyleSheet("font-size: 12px;")
         caja.addWidget(n)
         if resaltada:
             self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -466,6 +468,7 @@ class BurbujaReceptor(QFrame):
 def _aviso(color: str, titulo: str | None, texto: str) -> QFrame:
     aviso = QFrame()
     aviso.setObjectName("AvisoTransmision")
+    aviso.setProperty("acento", color)
     aviso.setStyleSheet(f"QFrame#AvisoTransmision {{ background: {rgba(color, 0.10)};"
                         f" border: 1px solid {rgba(color, 0.38)}; border-radius: 9px; }}")
     col = QVBoxLayout(aviso)
@@ -490,8 +493,8 @@ class BurbujaBienvenida(_ConTextoAjustable, QFrame):
         super().__init__(parent)
         self.setObjectName("BurbujaRecibida")
         caja = QVBoxLayout(self)
-        caja.setContentsMargins(18, 14, 18, 10)
-        caja.setSpacing(6)
+        caja.setContentsMargins(22, 18, 22, 12)
+        caja.setSpacing(8)
         caja.addWidget(etiqueta("¡Bienvenido a CodeChat Pro!", "AutorBurbuja"))
         texto = ("Envía un mensaje y lo transmitiré usando un código de repetición a través de un "
                  "Canal Binario Simétrico (BSC), mostrando todo el proceso de codificación, "
@@ -506,6 +509,7 @@ class BurbujaBienvenida(_ConTextoAjustable, QFrame):
         pasos.setTextFormat(Qt.TextFormat.RichText)
         pasos.setStyleSheet(f"color: {C.TEXTO}; font-size: 13px; font-weight: 600;")
         caja.addWidget(pasos)
+        caja.addSpacing(6)
         chips = FlujoLayout(espaciado=8)
         for s in sugerencias:
             b = QPushButton(s)
@@ -788,6 +792,7 @@ class TarjetaMetricaIcono(QFrame):
     def __init__(self, nombre_icono: str, titulo: str, color: str, ayuda: str = "", parent=None):
         super().__init__(parent)
         self.setObjectName("SubTarjeta")
+        self.setProperty("acento", color)
         if ayuda:
             self.setToolTip(ayuda)
         self.setMinimumHeight(74)
@@ -795,19 +800,20 @@ class TarjetaMetricaIcono(QFrame):
         fila.setContentsMargins(12, 10, 12, 10)
         fila.setSpacing(12)
         ic = QLabel()
-        ic.setFixedSize(40, 40)
+        ic.setFixedSize(34, 34)
         ic.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ic.setPixmap(pixmap(nombre_icono, color, 22))
-        ic.setStyleSheet(f"background: {rgba(color, 0.14)}; border: 1px solid {rgba(color, 0.35)};"
-                         " border-radius: 10px;")
+        ic.setPixmap(pixmap(nombre_icono, color, 18))
+        ic.setObjectName("Insignia")
+        ic.setProperty("acento", color)
+        ic.setStyleSheet(f"background: {rgba(color, 0.10)}; border: none; border-radius: 7px;")
         fila.addWidget(ic, 0, Qt.AlignmentFlag.AlignVCenter)
         col = QVBoxLayout()
         col.setSpacing(1)
         t = etiqueta(titulo, "EtiquetaSecundaria")
-        t.setStyleSheet(f"color: {C.TEXTO}; font-size: 13px;")
+        t.setStyleSheet(f"color: {C.TEXTO_SECUNDARIO}; font-size: 12px;")
         col.addWidget(t)
         self._valor = etiqueta("—", "ValorMetrica")
-        self._valor.setStyleSheet("font-size: 21px;")
+        self._valor.setStyleSheet("font-size: 23px;")
         col.addWidget(self._valor)
         self._detalle = etiqueta("", "Ayuda", ajustar=True)
         self._detalle.setStyleSheet("font-size: 11px;")
@@ -816,7 +822,7 @@ class TarjetaMetricaIcono(QFrame):
 
     def set_valor(self, valor: str | None, detalle: str = "") -> None:
         self._valor.setText("—" if valor is None else valor)
-        self._valor.setStyleSheet("font-size: 21px;" + (f" color: {C.TEXTO_TENUE};" if valor is None else ""))
+        self._valor.setStyleSheet("font-size: 23px;" + (f" color: {C.TEXTO_TENUE};" if valor is None else ""))
         self._detalle.setText(detalle)
         self._detalle.setVisible(bool(detalle))
 
@@ -904,6 +910,7 @@ class PanelCanal(AreaDesplazable):
         cab.addWidget(TrazosDiagonales(3), 0, Qt.AlignmentFlag.AlignVCenter)
         caja.addLayout(cab)
         canal = QLabel("Canal Binario Simétrico (BSC)")
+        canal.setObjectName("Pildora")
         canal.setAlignment(Qt.AlignmentFlag.AlignCenter)
         canal.setStyleSheet(f"background: {C.CAMPO}; border: 1px solid {C.BORDE}; border-radius: 14px;"
                             " padding: 5px 16px; font-size: 13px; font-weight: 600;")
@@ -921,7 +928,7 @@ class PanelCanal(AreaDesplazable):
         cp.setSpacing(10)
         rej = QGridLayout()
         rej.setHorizontalSpacing(8)
-        rej.setVerticalSpacing(8)
+        rej.setVerticalSpacing(10)
         self.selector_n = SelectorN(estado.n)
         self.selector_n.setMinimumWidth(80)
         self.campo_t = _campo_lectura("Errores corregibles t = ⌊(n − 1)/2⌋")
@@ -935,21 +942,23 @@ class PanelCanal(AreaDesplazable):
             (1, 1, "k:", "Bits de información por palabra código", self.campo_k),
         ]
         for fila, col, nombre, ayuda, widget in celdas:
-            lbl = QLabel(nombre)
+            lbl = QLabel(nombre.rstrip(":"))
             lbl.setTextFormat(Qt.TextFormat.RichText)
-            lbl.setStyleSheet("font-size: 14px;")
+            lbl.setMinimumWidth(30)
+            lbl.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {C.TEXTO_SECUNDARIO};")
             rej.addWidget(lbl, fila, col * 4)
             rej.addWidget(_info(ayuda), fila, col * 4 + 1)
             rej.addWidget(widget, fila, col * 4 + 2)
             if col == 0:
-                rej.setColumnMinimumWidth(3, 14)
+                rej.setColumnMinimumWidth(3, 18)
         rej.setColumnStretch(2, 1)
         rej.setColumnStretch(6, 1)
         cp.addLayout(rej)
         fila_p = QHBoxLayout()
         fila_p.setSpacing(8)
-        lbl_p = QLabel("p:")
-        lbl_p.setStyleSheet("font-size: 14px;")
+        lbl_p = QLabel("p")
+        lbl_p.setMinimumWidth(30)
+        lbl_p.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {C.TEXTO_SECUNDARIO};")
         fila_p.addWidget(lbl_p)
         fila_p.addWidget(_info("Probabilidad de que el canal BSC invierta cada bit (0 – 0.5)"))
         self.control_p = ControlProbabilidad(estado.p)
@@ -998,7 +1007,7 @@ class PanelCanal(AreaDesplazable):
         cab_g.addWidget(amp)
         c1.addLayout(cab_g)
         self.grafica = GraficaBER(leyenda=True, compacta=True)
-        self.grafica.setMinimumHeight(250)
+        self.grafica.setMinimumHeight(280)
         self.grafica.set_ampliable()
         self.grafica.clic.connect(lambda: DialogoGrafica("BER vs. Tasa de Transmisión", self.grafica,
                                                          self.window()).exec())
@@ -1111,7 +1120,8 @@ class VistaChat(QWidget):
         cab = QHBoxLayout(encabezado)
         cab.setContentsMargins(22, 14, 18, 14)
         cab.setSpacing(16)
-        cab.addWidget(icono_label("chat", C.ROJO, 40), 0, Qt.AlignmentFlag.AlignVCenter)
+        from interfaz.ilustraciones import Emblema
+        cab.addWidget(Emblema("chat"), 0, Qt.AlignmentFlag.AlignVCenter)
         textos = QVBoxLayout()
         textos.setSpacing(2)
         textos.addWidget(etiqueta("Chat", "TituloPagina"))

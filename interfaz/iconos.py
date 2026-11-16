@@ -109,11 +109,11 @@ _ICONOS = {
 }
 
 
-def _svg(nombre: str, color: str, trazo: float) -> bytes:
+def _svg(nombre: str, color: str, trazo: float, opacidad: float = 1.0) -> bytes:
     cuerpo = _ICONOS[nombre].replace("{c}", color)
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-        f'stroke="{color}" stroke-width="{trazo}" stroke-linecap="round" '
+        f'stroke="{color}" stroke-width="{trazo}" stroke-opacity="{opacidad}" stroke-linecap="round" '
         f'stroke-linejoin="round">{cuerpo}</svg>'
     ).encode("utf-8")
 
@@ -125,9 +125,13 @@ def pixmap(nombre: str, color: str = C.TEXTO, tamano: int = 20,
     lado = int(tamano * escala)
     imagen = QPixmap(lado, lado)
     imagen.fill(Qt.GlobalColor.transparent)
-    renderer = QSvgRenderer(QByteArray(_svg(nombre, color, trazo)))
     pintor = QPainter(imagen)
     pintor.setRenderHint(QPainter.RenderHint.Antialiasing)
+    if tamano >= 18:
+        # Brillo suave: el mismo trazo, más ancho y translúcido, por debajo (solo iconos medianos/grandes).
+        halo = QSvgRenderer(QByteArray(_svg(nombre, color, trazo * 2.6, 0.18)))
+        halo.render(pintor, QRectF(0, 0, lado, lado))
+    renderer = QSvgRenderer(QByteArray(_svg(nombre, color, trazo)))
     renderer.render(pintor, QRectF(0, 0, lado, lado))
     pintor.end()
     imagen.setDevicePixelRatio(escala)

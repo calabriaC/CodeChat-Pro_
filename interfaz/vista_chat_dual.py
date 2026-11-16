@@ -27,6 +27,7 @@ from interfaz.estilos import PILA_MONO, C, fuente, fuente_mono, qcolor, rgba
 from interfaz.grafica import GraficaBarras
 from interfaz.iconos import icono
 from interfaz.marcos import PanelTecnico
+from interfaz.marcos_globales import PanelSecundario
 from interfaz.servicio_dual import ESTADOS_DUAL, NOMBRES, ConversacionDual, MensajeDual
 from interfaz.vista_chat import Conversacion, EntradaMensaje, _ConTextoAjustable
 
@@ -125,6 +126,8 @@ _TIPOS_VALOR = {
 def _etiqueta_tipo(tipo: str) -> QLabel:
     texto, color, ayuda = _TIPOS_VALOR[tipo]
     lbl = QLabel(texto)
+    lbl.setObjectName("Pildora")
+    lbl.setProperty("acento", color)
     lbl.setToolTip(ayuda)
     lbl.setStyleSheet(f"color: {color}; background: {rgba(color, 0.10)}; border: 1px solid {rgba(color, 0.35)};"
                       " border-radius: 4px; padding: 1px 5px; font-size: 9px; font-weight: 700;"
@@ -147,9 +150,9 @@ class _Avatar(QLabel):
 
 _CORTOS = {  # versión compacta para burbujas estrechas: (receptor, emisor)
     "correcto": ("Correcto", "Entregado"),
-    "con_errores": ("Con errores", "Llegó con errores"),
-    "no_reconstruible": ("Ilegible", "Llegó ilegible"),
-    "empate": ("Empate", "Llegó con empates"),
+    "con_errores": ("Con errores", "Con errores"),
+    "no_reconstruible": ("Ilegible", "Ilegible"),
+    "empate": ("Empate", "Con empates"),
 }
 
 
@@ -195,6 +198,8 @@ class BurbujaDual(_ConTextoAjustable, QFrame):
         r = m.resultado
         color, color_claro, (g1, g2) = COLORES[m.emisor]
         self.setObjectName("BurbujaDual")
+        self.setProperty("acento", color)
+        self.setProperty("propio", propio)
         if propio:
             self.setStyleSheet(f"QFrame#BurbujaDual {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
                                f" stop:0 {g1}, stop:1 {g2}); border: 1px solid {rgba(color_claro, 0.7)};"
@@ -363,6 +368,7 @@ class PanelUsuario(PanelTecnico):
         # Barra de entrada (siempre visible: la conversación es la que se desplaza)
         self.barra = QFrame()
         self.barra.setObjectName("BarraEntrada")
+        self.barra.setProperty("acento", color)
         self.barra.setStyleSheet(
             f"QFrame#BarraEntrada {{ background: {C.PANEL}; border: 1px solid {rgba(color, 0.55)};"
             f" border-radius: 8px; }}"
@@ -377,6 +383,7 @@ class PanelUsuario(PanelTecnico):
         fila.addWidget(self.entrada, 1, Qt.AlignmentFlag.AlignVCenter)
         self.boton = QPushButton(f"  Enviar a {otro}")
         self.boton.setObjectName("BotonEnviarDual")
+        self.boton.setProperty("acento", color)
         self.boton.setIcon(icono("enviar", C.TEXTO, 18))
         self.boton.setIconSize(QSize(18, 18))
         self.boton.setFixedHeight(42)
@@ -513,7 +520,7 @@ class PanelControlDual(AreaDesplazable):
         lay = self.layout_interno
 
         # ---- Parámetros del canal -----------------------------------------
-        par = PanelTecnico(relleno=C.PANEL, borde="#1D3F6E", acento_a=C.ROJO, acento_b=C.AZUL_ELECTRICO,
+        par = PanelSecundario(relleno=C.PANEL, borde="#1D3F6E", acento_a=C.ROJO, acento_b=C.AZUL_ELECTRICO,
                            chaflan=12, marca=False)
         c = QVBoxLayout(par)
         c.setContentsMargins(16, 14, 14, 14)
@@ -983,7 +990,7 @@ class VisualizacionTransmision(QFrame):
 # ===========================================================================
 # Inspector matemático
 # ===========================================================================
-class _Seccion(PanelTecnico):
+class _Seccion(PanelSecundario):
     """Etapa del inspector: valores a la izquierda y secuencias a la derecha."""
 
     def __init__(self, letra: str, titulo: str, nombre_icono: str, color: str,
@@ -1044,6 +1051,7 @@ class _Seccion(PanelTecnico):
         self._rejilla.addWidget(t, k, 0, 1, 2)
         self._rejilla.addWidget(_etiqueta_tipo(tipo), k, 2, Qt.AlignmentFlag.AlignVCenter)
         v = etiqueta(valor, "Mono", ajustar=True)
+        v.setObjectName("CampoValor")
         v.setStyleSheet(f"color: {color}; font-size: 12px; background: {C.CAMPO_OSCURO};"
                         f" border: 1px solid {C.BORDE_SUAVE}; border-radius: 5px; padding: 5px 8px;")
         v.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)

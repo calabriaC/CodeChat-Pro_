@@ -20,7 +20,7 @@ class C:
     BARRA_SUPERIOR = "#0B1424"
     FONDO_LATERAL = "#08101E"    # barra lateral
     PANEL = "#0F192A"            # panel principal
-    SUPERFICIE = "#111E33"       # panel técnico
+    SUPERFICIE = "#14243B"       # superficie secundaria
     SUPERFICIE_ALTA = "#1A2A44"  # hover / elementos elevados
     CAMPO = "#142037"            # superficie de entradas
     CAMPO_OSCURO = "#0A1322"     # visores de bits y fondos hundidos
@@ -34,11 +34,12 @@ class C:
     VERDE = "#26D98A"            # éxito
     AMBAR = "#FFB547"            # advertencia
     ERROR = "#FF5265"            # error
-    MORADO = "#9C7BFF"
-    TEXTO = "#F5F7FC"
+    MORADO = "#B78AFF"           # violeta
+    CIAN = "#00C8F8"
+    TEXTO = "#E8F3FF"
     TEXTO_SECUNDARIO = "#A6B7CF"
     TEXTO_TENUE = "#6F819C"
-    BORDE = "#253752"            # bordes neutros
+    BORDE = "#304861"            # bordes secundarios
     BORDE_SUAVE = "#1B2A41"      # bordes sutiles
 
 
@@ -58,15 +59,37 @@ def rgba(hex_color: str, alfa: float) -> str:
 # ---------------------------------------------------------------------------
 # Tipografía
 # ---------------------------------------------------------------------------
-# Inter y JetBrains Mono se usan si están instaladas; si no, Qt recurre a las
-# alternativas del sistema (Segoe UI Variable / Segoe UI y Cascadia Mono / Consolas).
-FAMILIAS_UI = ["Inter", "Segoe UI"]
-FAMILIAS_MONO = ["JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Consolas", "Courier New"]
+# Tipografía de CodeChat Pro (archivos incluidos en interfaz/recursos/fuentes, licencia SIL OFL):
+#   · Sora: interfaz. ExtraBold 800 títulos y logotipo · SemiBold 600 subtítulos, tarjetas,
+#     menús y botones · Regular 400 mensajes y explicaciones.
+#   · JetBrains Mono: números, BER, tasas, métricas y bits (Bold 700 en los valores).
+#   · STIX Two Math: fórmulas matemáticas.
+# Si los archivos faltaran, Qt usa las siguientes familias de cada lista (fuentes de Windows).
+FAMILIAS_UI = ["Sora", "Bahnschrift", "Segoe UI"]
+FAMILIAS_MONO = ["JetBrains Mono", "Cascadia Code", "Cascadia Mono", "Consolas", "Courier New"]
+FAMILIAS_MATH = ["STIX Two Math", "Cambria Math", "Times New Roman"]
 FUENTE = FAMILIAS_UI[0]
 FUENTE_MONO = FAMILIAS_MONO[0]
-FUENTE_MONO_RESPALDO = "Consolas"
+FUENTE_MONO_RESPALDO = "JetBrains Mono"
 PILA_UI = ", ".join(f'"{f}"' for f in FAMILIAS_UI)
 PILA_MONO = ", ".join(f'"{f}"' for f in FAMILIAS_MONO)
+PILA_MATH = ", ".join(f'"{f}"' for f in FAMILIAS_MATH)
+
+
+def preparar_fuentes() -> list[str]:
+    """Registra las fuentes incluidas en el proyecto (requiere QApplication).
+
+    No instala nada en el sistema: las fuentes solo existen mientras la aplicación está abierta.
+    Devuelve las familias cargadas.
+    """
+    from PySide6.QtGui import QFontDatabase
+    cargadas: list[str] = []
+    carpeta = Path(__file__).resolve().parent / "recursos" / "fuentes"
+    for archivo in sorted(carpeta.glob("*.ttf")):
+        indice = QFontDatabase.addApplicationFont(str(archivo))
+        if indice >= 0:
+            cargadas += QFontDatabase.applicationFontFamilies(indice)
+    return sorted(set(cargadas))
 
 
 def fuente(tamano: int = 10, peso: QFont.Weight = QFont.Weight.Normal) -> QFont:
@@ -90,7 +113,7 @@ def fuente_mono(tamano: int = 10) -> QFont:
 # Medidas
 # ---------------------------------------------------------------------------
 RADIO_TARJETA = 16
-RADIO_CONTROL = 10
+RADIO_CONTROL = 8
 ANCHO_BARRA_LATERAL = 284
 ANCHO_PANEL_DERECHO = 440
 
@@ -129,21 +152,22 @@ QToolTip {{
 
 /* ---------- Tipografía por rol ---------- */
 QLabel {{ background: transparent; }}
-QLabel#TituloPagina {{ font-size: 23px; font-weight: 700; letter-spacing: -0.2px; }}
-QLabel#SubtituloPagina {{ font-size: 14px; color: {C.TEXTO_SECUNDARIO}; }}
-QLabel#TituloTarjeta {{ font-size: 17px; font-weight: 650; letter-spacing: -0.1px; }}
+QLabel#TituloPagina {{ font-size: 24px; font-weight: 800; letter-spacing: -0.4px; }}
+QLabel#SubtituloPagina {{ font-size: 13px; font-weight: 600; color: {C.TEXTO_SECUNDARIO}; }}
+QLabel#TituloTarjeta {{ font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }}
 QLabel#SubtituloTarjeta {{ font-size: 13px; color: {C.TEXTO_SECUNDARIO}; }}
 QLabel#ValorMetricaPequeno {{ font-family: {PILA_MONO}; font-size: 20px; font-weight: 700; }}
 QLabel#Etiqueta {{ font-size: 14px; color: {C.TEXTO}; }}
 QLabel#EtiquetaSecundaria {{ font-size: 13px; color: {C.TEXTO_SECUNDARIO}; }}
 QLabel#EtiquetaTenue {{ font-size: 12px; color: {C.TEXTO_TENUE}; }}
 QLabel#Seccion {{
+    padding-top: 3px;   /* deja sitio a las tildes de las mayúsculas (Ó, Á) */
     font-size: 11px; font-weight: 700; letter-spacing: 1.4px;
     color: {C.TEXTO_TENUE};
 }}
-QLabel#ValorMetrica {{ font-family: {PILA_MONO}; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }}
+QLabel#ValorMetrica {{ font-family: {PILA_MONO}; font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }}
 QLabel#ValorMetricaVacio {{ font-family: {PILA_MONO}; font-size: 20px; font-weight: 600; color: {C.TEXTO_TENUE}; }}
-QLabel#Mono {{ font-family: {PILA_MONO}; font-size: 13px; }}
+QLabel#Mono {{ font-family: {PILA_MONO}; font-size: 13px; font-weight: 600; }}
 QLabel#Ayuda {{ font-size: 12px; color: {C.TEXTO_TENUE}; }}
 QLabel#Error {{ font-size: 13px; color: {C.ERROR}; }}
 
@@ -160,9 +184,8 @@ QFrame#TarjetaInterna {{
     border-radius: 12px;
 }}
 QFrame#EncabezadoPagina {{
-    background: {C.PANEL};
-    border: 1px solid {C.BORDE};
-    border-radius: 14px;
+    background: transparent;
+    border: none;
     margin: 14px 16px 0px 16px;
 }}
 QFrame#PanelPrincipal {{
@@ -183,8 +206,8 @@ QFrame#SubTarjeta {{
     border-radius: 5px;
 }}
 QLabel#CampoLectura {{
-    background: {C.CAMPO}; border: 1px solid {C.BORDE}; border-radius: 8px;
-    padding: 6px 10px; font-family: {PILA_MONO}; font-size: 13px; font-weight: 600;
+    background: {C.CAMPO}; border: 1px solid {C.BORDE}; border-radius: 6px;
+    padding: 6px 10px; font-family: {PILA_MONO}; font-size: 14px; font-weight: 700; color: {C.TEXTO};
 }}
 QLabel#CajaValor {{
     background: {C.CAMPO}; border: 1px solid {C.BORDE_SUAVE}; border-radius: 7px;
@@ -210,8 +233,8 @@ QFrame#BarraEntrada {{
 QFrame#BarraEntrada[foco="true"] {{ border: 1px solid {rgba(C.ROJO, 0.75)}; }}
 QFrame#BarraEntrada[alerta="true"] {{ border: 1px solid {C.ERROR}; }}
 QPlainTextEdit#EntradaMensaje {{
-    background: {C.CAMPO}; border: 1px solid {C.BORDE}; border-radius: 10px; padding: 6px 10px;
-    font-family: {PILA_UI}; font-size: 15px;
+    background: {C.CAMPO}; border: 1px solid {C.BORDE}; border-radius: 8px; padding: 9px 12px;
+    font-family: {PILA_UI}; font-size: 15px; color: {C.TEXTO};
 }}
 QPlainTextEdit#EntradaMensaje:focus {{ border: 1px solid {rgba(C.ROJO, 0.7)}; }}
 
@@ -221,7 +244,7 @@ QFrame#MiniDato {{
 }}
 QFrame#MiniDato:hover {{ border-color: {C.BORDE}; }}
 QLabel#MiniDatoTitulo {{ font-size: 12px; color: {C.TEXTO_SECUNDARIO}; }}
-QLabel#MiniDatoValor {{ font-family: {PILA_MONO}; font-size: 16px; font-weight: 700; }}
+QLabel#MiniDatoValor {{ font-family: {PILA_MONO}; font-size: 17px; font-weight: 700; }}
 QLabel#NumeroPaso {{
     background: {rgba(C.ROJO, 0.14)}; color: {C.ROJO_CLARO};
     border: 1px solid {rgba(C.ROJO, 0.45)}; border-radius: 10px;
@@ -255,8 +278,8 @@ QFrame#BurbujaSistema {{
     border: 1px solid {rgba(C.ROJO, 0.35)};
     border-radius: 12px;
 }}
-QLabel#TextoBurbuja {{ font-size: 15px; }}
-QLabel#AutorBurbuja {{ font-size: 16px; font-weight: 700; color: {C.TEXTO}; }}
+QLabel#TextoBurbuja {{ font-size: 14px; font-weight: 400; }}
+QLabel#AutorBurbuja {{ font-size: 16px; font-weight: 600; color: {C.TEXTO}; }}
 QLabel#HoraBurbuja {{ font-family: {PILA_MONO}; font-size: 11px; color: {rgba(C.TEXTO, 0.62)}; }}
 
 QLabel#SeparadorFecha {{
@@ -306,7 +329,7 @@ QPushButton:focus {{ border-color: {rgba(C.ROJO, 0.55)}; }}
 QPushButton:disabled {{ color: {C.TEXTO_TENUE}; background: {C.PANEL}; border-color: {C.BORDE_SUAVE}; }}
 
 QPushButton#BotonPrimario {{
-    font-size: 14px; font-weight: 700; letter-spacing: 0.2px;
+    font-size: 14px; font-weight: 600; letter-spacing: 0.2px;
     border: 1px solid {rgba(C.ROJO_CLARO, 0.65)};
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                 stop:0 {C.ROJO}, stop:1 {C.ROJO_SECUNDARIO});
@@ -343,7 +366,7 @@ QPushButton#BotonFantasma:pressed {{ background: {C.PANEL}; }}
 
 QPushButton#Sugerencia {{
     background: {C.PANEL}; border: 1px solid {C.BORDE};
-    border-radius: 17px; padding: 8px 16px; font-size: 13px; font-weight: 500;
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 500;
     color: {C.TEXTO_SECUNDARIO};
 }}
 QPushButton#Sugerencia:hover {{ border-color: {rgba(C.ROJO, 0.7)}; color: {C.TEXTO}; background: {rgba(C.ROJO, 0.08)}; }}

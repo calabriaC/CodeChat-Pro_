@@ -1,16 +1,19 @@
 """Ventana principal de CodeChat Pro."""
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QIcon, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QVBoxLayout, QWidget,
+    QApplication, QHBoxLayout, QMainWindow, QMessageBox, QStackedWidget, QStyleFactory, QVBoxLayout,
+    QWidget,
 )
 
 from interfaz.barra_lateral import BarraLateral
 from interfaz.componentes import pixmap_logo
 from interfaz.estado import EstadoApp
 from interfaz.marcos import FondoOndas
-from interfaz.estilos import fuente, hoja_estilos
+from interfaz.marcos_globales import EstiloMarcos
+from interfaz import estilos
+from interfaz.estilos import C, qcolor
 from interfaz.vista_analisis import VistaAnalisis
 from interfaz.vista_chat import VistaChat
 from interfaz import servicio_dual
@@ -91,7 +94,12 @@ class VentanaPrincipal(QMainWindow):
 
 def configurar_aplicacion(app: QApplication) -> None:
     """Aplica estilo base, tipografía y hoja de estilos global."""
-    app.setStyle("Fusion")
-    app.setFont(fuente(10))
-    app.setStyleSheet(hoja_estilos())
+    # Fusion + diseño de interfaz/marcos.py aplicado a toda la interfaz (ver marcos_globales.py).
+    app.setStyle(EstiloMarcos(QStyleFactory.create("Fusion")))
+    estilos.preparar_fuentes()            # Sora, JetBrains Mono y STIX Two Math (interfaz/recursos/fuentes)
+    app.setFont(estilos.fuente(10))
+    paleta = app.palette()
+    paleta.setColor(QPalette.ColorRole.PlaceholderText, qcolor(C.TEXTO_SECUNDARIO, 175))
+    app.setPalette(paleta)
+    app.setStyleSheet(estilos.hoja_estilos())
     app.setApplicationName("CodeChat Pro")

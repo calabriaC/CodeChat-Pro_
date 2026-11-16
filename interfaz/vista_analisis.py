@@ -29,6 +29,7 @@ class TarjetaCodigo(Tarjeta):
         super().__init__(parent=parent, margen=16, espaciado=8)
         color = COLORES_N.get(n, C.ROJO)
         self.acento_a = color   # color del código en el marco técnico
+        self.nivel = 2          # resultado de experimento: panel secundario
         self.acento_b = None
         cab = QHBoxLayout()
         titulo = etiqueta(f"Repetición n = {n}", "TituloTarjeta")

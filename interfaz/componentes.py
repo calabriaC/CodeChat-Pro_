@@ -22,6 +22,7 @@ from interfaz.estilos import (
 )
 from interfaz.iconos import icono, pixmap
 from interfaz.marcos import pintar_marco
+from interfaz.marcos_globales import pintar_nivel2
 
 
 # ===========================================================================
@@ -196,14 +197,20 @@ class Tarjeta(QFrame):
                 cabecera.addWidget(extra, 0, Qt.AlignmentFlag.AlignVCenter)
             self.cuerpo.addLayout(cabecera)
 
-    # Acentos del marco técnico (las subclases pueden cambiarlos)
+    # Acentos del marco (las subclases pueden cambiarlos).
+    # nivel 1 = marco principal de marcos.py; nivel 2 = panel secundario (resultados, fichas).
     acento_a: str | None = C.ROJO
     acento_b: str | None = C.AZUL_ELECTRICO
+    nivel: int = 1
 
     def paintEvent(self, _event):
         p = QPainter(self)
-        pintar_marco(p, QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5), C.PANEL, C.BORDE,
-                     self.acento_a, self.acento_b, chaflan=12, largo_acento=38, marca=False)
+        r = QRectF(self.rect()).adjusted(1.5, 1.5, -1.5, -1.5)
+        if self.nivel == 2:
+            pintar_nivel2(p, r, C.PANEL, C.BORDE, self.acento_a)
+        else:
+            pintar_marco(p, r, C.PANEL, C.BORDE, self.acento_a, self.acento_b, chaflan=12,
+                         largo_acento=38, marca=False)
         p.end()
 
 
@@ -214,23 +221,52 @@ class EncabezadoPagina(QFrame):
         super().__init__(parent)
         self.setObjectName("EncabezadoPagina")
         self.fila = QHBoxLayout(self)
-        self.fila.setContentsMargins(28, 20, 24, 20)
+        self.fila.setContentsMargins(26, 14, 18, 14)
         self.fila.setSpacing(18)
-        self.fila.addWidget(icono_label(nombre_icono, C.ROJO, 40), 0, Qt.AlignmentFlag.AlignVCenter)
+        # Emblema ilustrado de la sección (si existe); si no, el icono de línea.
+        from interfaz.ilustraciones import Emblema, tiene_ilustracion
+        cabecera_icono = (Emblema(nombre_icono) if tiene_ilustracion(nombre_icono)
+                          else icono_label(nombre_icono, C.ROJO, 40))
+        self.fila.addWidget(cabecera_icono, 0, Qt.AlignmentFlag.AlignVCenter)
         textos = QVBoxLayout()
         textos.setSpacing(2)
         textos.addWidget(etiqueta(titulo, "TituloPagina"))
         textos.addWidget(EtiquetaRecortada(subtitulo, "SubtituloPagina"))
         self.fila.addLayout(textos, 1)
+        # Ruta «// CodeChat Pro · Sección» a la derecha, como en la referencia
+        from interfaz.marcos import TrazosDiagonales
+        ruta = QWidget()
+        f = QHBoxLayout(ruta)
+        f.setContentsMargins(0, 0, 0, 0)
+        f.setSpacing(8)
+        f.addWidget(TrazosDiagonales(2), 0, Qt.AlignmentFlag.AlignVCenter)
+        miga = etiqueta(f"CodeChat Pro  ·  {titulo}", "EtiquetaSecundaria")
+        miga.setStyleSheet(f"color: {C.TEXTO_SECUNDARIO}; font-size: 13px;")
+        f.addWidget(miga)
+        self.fila.addWidget(ruta, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def agregar(self, widget: QWidget) -> None:
-        self.fila.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        # Los botones van antes de la ruta de navegación.
+        self.fila.insertWidget(self.fila.count() - 1, widget, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def paintEvent(self, _event):
         p = QPainter(self)
-        # El margen coincide con el «margin» del QSS (14 arriba, 16 a los lados).
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Encabezado abierto (sin caja): barra roja vertical y filo inferior cian → transparente.
         r = QRectF(self.rect()).adjusted(16.5, 14.5, -16.5, -1.5)
-        pintar_marco(p, r, C.PANEL, C.BORDE, C.ROJO, C.AZUL_ELECTRICO, chaflan=16, largo_acento=70)
+        barra = QRectF(r.left() + 6, r.center().y() - 22, 3.5, 44)
+        for extra, alfa in ((4, 30), (2, 70)):
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(qcolor(C.ROJO, alfa))
+            p.drawRoundedRect(barra.adjusted(-extra, -extra, extra, extra), 3 + extra, 3 + extra)
+        p.setBrush(qcolor(C.ROJO))
+        p.drawRoundedRect(barra, 1.5, 1.5)
+        filo = QLinearGradient(QPointF(r.left(), 0), QPointF(r.right(), 0))
+        filo.setColorAt(0, qcolor(C.CIAN, 150))
+        filo.setColorAt(0.35, qcolor(C.BORDE, 200))
+        filo.setColorAt(1, qcolor(C.BORDE, 0))
+        p.setPen(QPen(QBrush(filo), 1))
+        p.drawLine(QPointF(r.left(), r.bottom()), QPointF(r.right(), r.bottom()))
         p.end()
 
 
@@ -271,6 +307,7 @@ class TarjetaMetrica(QFrame):
     def __init__(self, titulo: str, acento: str = C.ROJO, ayuda: str = "", parent=None):
         super().__init__(parent)
         self.setObjectName("TarjetaMetrica")
+        self.setProperty("acento", acento)
         self.setStyleSheet(f"""
             QFrame#TarjetaMetrica {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
@@ -343,32 +380,26 @@ class BotonNavegacion(QAbstractButton):
         activo = self.isChecked()
 
         if activo:
-            # Resplandor discreto alrededor del elemento activo
-            for extra, alfa in ((4, 14), (2, 26)):
-                p.setPen(Qt.PenStyle.NoPen)
-                p.setBrush(qcolor(C.ROJO, alfa))
-                p.drawRoundedRect(r.adjusted(-extra, -extra + 1, extra, extra - 1), 12 + extra, 12 + extra)
+            # Elemento activo como en la referencia: rojo degradado con un brillo rojo suave.
+            ruta = QPainterPath()
+            ruta.addRoundedRect(r.adjusted(1, 0, -1, 0), 10, 10)
+            for extra, alfa in ((5, 16), (2.5, 34)):
+                p.setPen(QPen(qcolor(C.ROJO, alfa), extra * 2))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawPath(ruta)
             grad = QLinearGradient(r.topLeft(), r.topRight())
-            grad.setColorAt(0, qcolor(C.ROJO, 235))
-            grad.setColorAt(0.6, qcolor(C.ROJO_SECUNDARIO, 200))
-            grad.setColorAt(1, qcolor(C.ROJO_OSCURO, 140))
-            p.setPen(QPen(qcolor(C.ROJO_CLARO, 110), 1))
+            grad.setColorAt(0, qcolor(C.ROJO, 225))
+            grad.setColorAt(1, qcolor(C.ROJO_OSCURO, 190))
+            p.setPen(QPen(qcolor(C.ROJO_CLARO, 200), 1.2))
             p.setBrush(grad)
-            p.drawRoundedRect(r, 9, 9)
-            p.setPen(Qt.PenStyle.NoPen)
-            for ancho, alfa in ((9, 40), (5, 90), (3, 255)):
-                p.setBrush(qcolor(C.AZUL, alfa))
-                p.drawRoundedRect(QRectF(r.left() + 1 - (ancho - 3) / 2, r.top() + 8, ancho, r.height() - 16),
-                                  ancho / 2, ancho / 2)
+            p.drawPath(ruta)
         elif self._hover:
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(qcolor(C.SUPERFICIE, 220))
-            p.drawRoundedRect(r, 12, 12)
+            pintar_nivel2(p, r.adjusted(1, 0, -1, 0), relleno=C.SUPERFICIE, borde=C.BORDE)
 
         color = C.TEXTO if (activo or self._hover) else C.TEXTO_SECUNDARIO
         p.drawPixmap(QPointF(r.left() + 22, r.center().y() - 12), pixmap(self._icono, color, 24))
 
-        f = fuente(12, QFont.Weight.DemiBold if activo else QFont.Weight.Medium)
+        f = fuente(11.5, QFont.Weight.DemiBold)   # Sora SemiBold (menús)
         p.setFont(f)
         p.setPen(QColor(C.TEXTO if activo else color))
         p.drawText(QRectF(r.left() + 64, r.top(), r.width() - 100, r.height()),
@@ -928,6 +959,7 @@ class ChipEstado(QFrame):
         super().__init__(parent)
         texto, _tipo, nombre_ic, color, _desc = ESTADOS_TRANSMISION[estado]
         self.setObjectName("ChipEstado")
+        self.setProperty("acento", color)
         self.setStyleSheet(
             f"QFrame#ChipEstado {{ background: {rgba(color, 0.13)}; border: 1px solid {rgba(color, 0.45)};"
             f" border-radius: 9px; }}")
@@ -1311,6 +1343,7 @@ class TarjetaDetalleTransmision(QFrame):
         _t, _tipo, nombre_ic, color, _d = ESTADOS_TRANSMISION[r.estado]
         banner = QFrame()
         banner.setObjectName("Banner")
+        banner.setProperty("acento", color)
         banner.setStyleSheet(f"QFrame#Banner {{ background: {rgba(color, 0.10)};"
                              f" border: 1px solid {rgba(color, 0.40)}; border-radius: 10px; }}")
         fila_b = QHBoxLayout(banner)

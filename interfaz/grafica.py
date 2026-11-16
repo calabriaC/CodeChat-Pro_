@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from interfaz.estilos import C, fuente, qcolor
@@ -79,10 +79,10 @@ class _LienzoLog(_Ampliable, QWidget):
         return area.bottom() - (log - self._ymin) / (self._ymax - self._ymin) * area.height()
 
     def _pintar_ejes_y(self, p: QPainter, area: QRectF) -> None:
-        p.setFont(fuente(8.5))
+        p.setFont(fuente(9))
         for d in range(self._ymin, self._ymax + 1):
             y = self._y(10 ** d, area)
-            p.setPen(QPen(qcolor(C.BORDE, 160), 1, Qt.PenStyle.DashLine))
+            p.setPen(QPen(qcolor(C.BORDE, 70), 1, Qt.PenStyle.SolidLine))
             p.drawLine(QPointF(area.left(), y), QPointF(area.right(), y))
             p.setPen(QColor(C.TEXTO_SECUNDARIO))
             p.drawText(QRectF(0, y - 9, area.left() - 10, 18),
@@ -101,7 +101,9 @@ class _LienzoLog(_Ampliable, QWidget):
             p.drawText(QRectF(-60, -9, 120, 18), Qt.AlignmentFlag.AlignCenter, self._titulo_y)
             p.restore()
         if self._titulo_x:
-            p.drawText(QRectF(area.left(), self.height() - 22, area.width(), 18),
+            # Justo debajo de las etiquetas del eje (no depende del alto total del widget,
+            # así no se cruza con una leyenda situada debajo).
+            p.drawText(QRectF(area.left(), min(area.bottom() + 22, self.height() - 20), area.width(), 18),
                        Qt.AlignmentFlag.AlignCenter, self._titulo_x)
 
     def _pintar_leyenda(self, p: QPainter, area: QRectF, items: list[tuple[str, str, str]]) -> None:
@@ -146,6 +148,46 @@ class _LienzoLog(_Ampliable, QWidget):
                 p.drawEllipse(QPointF(x + 9, y), 3.5, 3.5)
             p.setPen(QColor(C.TEXTO))
             p.drawText(QRectF(x + 26, y - 9, ancho, 18), Qt.AlignmentFlag.AlignVCenter, nombre)
+
+    @staticmethod
+    def _filas_leyenda(items: list[tuple[str, str, str]], ancho: float) -> list[list[tuple]]:
+        """Reparte los elementos de la leyenda en filas que caben en `ancho`."""
+        fm = QFontMetricsF(fuente(8.5))
+        filas: list[list[tuple]] = [[]]
+        usado = 0.0
+        for item in items:
+            w = fm.horizontalAdvance(item[0]) + 34
+            if filas[-1] and usado + w > ancho:
+                filas.append([])
+                usado = 0.0
+            filas[-1].append((item, w))
+            usado += w
+        return [f for f in filas if f]
+
+    def _pintar_leyenda_fila(self, p: QPainter, items: list[tuple[str, str, str]], top: float) -> None:
+        """Leyenda en una o varias filas centradas bajo la gráfica (no tapa ningún dato)."""
+        p.setFont(fuente(8.5))
+        for k, fila in enumerate(self._filas_leyenda(items, self.width() - 16)):
+            x = (self.width() - sum(w for _, w in fila)) / 2
+            y = top + 9 + k * 18
+            for (nombre, color, forma), w in fila:
+                if forma == "vertical":
+                    p.setPen(QPen(QColor(color), 1.6, Qt.PenStyle.DotLine))
+                    p.drawLine(QPointF(x + 9, y - 6), QPointF(x + 9, y + 6))
+                elif forma == "hueco":
+                    p.setPen(QPen(QColor(color), 1.6))
+                    p.setBrush(QColor(C.PANEL))
+                    p.drawEllipse(QPointF(x + 9, y), 3.5, 3.5)
+                else:
+                    if forma == "linea":
+                        p.setPen(QPen(QColor(color), 2))
+                        p.drawLine(QPointF(x, y), QPointF(x + 18, y))
+                    p.setPen(Qt.PenStyle.NoPen)
+                    p.setBrush(QColor(color))
+                    p.drawEllipse(QPointF(x + 9, y), 3.5, 3.5)
+                p.setPen(QColor(C.TEXTO_SECUNDARIO))
+                p.drawText(QRectF(x + 24, y - 9, w - 24, 18), Qt.AlignmentFlag.AlignVCenter, nombre)
+                x += w
 
     def _pintar_hover(self, p: QPainter) -> None:
         if not self._hover:
@@ -227,11 +269,11 @@ class GraficaBER(_LienzoLog):
         area = self._area()
         self._pintar_ejes_y(p, area)
 
-        p.setFont(fuente(7.5 if self._compacta else 8.5))
+        p.setFont(fuente(8.5 if self._compacta else 9))
         for i in range(0, 6):
             v = i * 0.2
             x = self._x(v, area)
-            p.setPen(QPen(qcolor(C.BORDE, 90), 1, Qt.PenStyle.DashLine))
+            p.setPen(QPen(qcolor(C.BORDE, 55), 1, Qt.PenStyle.SolidLine))
             p.drawLine(QPointF(x, area.top()), QPointF(x, area.bottom()))
             if self._compacta and i == 0:
                 continue
@@ -279,19 +321,29 @@ class GraficaBER(_LienzoLog):
                 self._objetivos.append(
                     (q, f"{s.nombre}{' · ' + etiqueta if etiqueta else ''}\nR = {x:.3f}\nBER = {texto_y}"))
 
-        items = [(s.nombre, s.color, "linea" if s.tipo == "linea" else "puntos") for s in self._series]
-        if any(y <= 0 for s in self._series for _, y in s.puntos):
-            items.append(("BER = 0 (dibujado en el borde inferior)", C.TEXTO_SECUNDARIO, "hueco"))
-        if self._vertical:
-            items.append((f"Capacidad C = {self._vertical[0]:.3f}", C.VERDE, "vertical"))
-        if self._con_leyenda:
+        items = self._items_leyenda()
+        if self._con_leyenda and self._compacta:
+            self._pintar_leyenda_fila(p, items, area.bottom() + 40)
+        elif self._con_leyenda:
             self._pintar_leyenda(p, area, items)
         self._pintar_hover(p)
         p.end()
 
+    def _items_leyenda(self) -> list[tuple[str, str, str]]:
+        items = [(s.nombre, s.color, "linea" if s.tipo == "linea" else "puntos") for s in self._series]
+        if any(y <= 0 for s in self._series for _, y in s.puntos):
+            items.append(("BER = 0 (borde inferior)" if self._compacta
+                          else "BER = 0 (dibujado en el borde inferior)", C.TEXTO_SECUNDARIO, "hueco"))
+        if self._vertical:
+            items.append((f"Capacidad C = {self._vertical[0]:.3f}", C.VERDE, "vertical"))
+        return items
+
     def _area(self) -> QRectF:
         if self._compacta:
-            return QRectF(36, 10, max(10, self.width() - 36 - 10), max(10, self.height() - 10 - 40))
+            # Debajo: etiquetas del eje X, título «Tasa R» y la leyenda en fila(s).
+            filas = len(self._filas_leyenda(self._items_leyenda(), self.width() - 16)) if self._con_leyenda else 0
+            abajo = 40 + filas * 18 + (4 if filas else 0)
+            return QRectF(46, 12, max(10, self.width() - 46 - 14), max(10, self.height() - 12 - abajo))
         return super()._area()
 
     def datos(self) -> tuple[list[Serie], tuple[float, str] | None, str]:

@@ -25,6 +25,7 @@ class FilaHistorial(QFrame):
     def __init__(self, r, parent=None):
         super().__init__(parent)
         self.setObjectName("FilaHistorial")
+        self.setProperty("acento", ESTADOS_TRANSMISION[r.estado][3])
         self.setStyleSheet(f"""
             QFrame#FilaHistorial {{ background: {C.PANEL}; border: 1px solid {C.BORDE_SUAVE};
                                     border-left: 3px solid {ESTADOS_TRANSMISION[r.estado][3]};

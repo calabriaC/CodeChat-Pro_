@@ -60,6 +60,7 @@ class _NodoProceso(QWidget):
 
 
 class DiagramaProceso(Tarjeta):
+    nivel = 2   # sección interna de resultados
     """Entrada → Codificación → Canal BSC → Decodificación (ilustración del proceso)."""
 
     def __init__(self, parent=None):
@@ -77,6 +78,7 @@ class DiagramaProceso(Tarjeta):
 
 
 class TablaComparacion(Tarjeta):
+    nivel = 2   # resultados del experimento
     """Medición experimental frente a predicción teórica, claramente separadas."""
 
     def __init__(self, parent=None):
@@ -103,6 +105,7 @@ class TablaComparacion(Tarjeta):
     def _columna(self, fila, titulo, color, filas):
         marco = QFrame()
         marco.setObjectName("TarjetaInterna")
+        marco.setProperty("acento", color)
         marco.setStyleSheet(f"QFrame#TarjetaInterna {{ border-top: 3px solid {color}; }}")
         rej = QGridLayout(marco)
         rej.setContentsMargins(14, 12, 14, 12)

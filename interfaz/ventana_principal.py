@@ -13,6 +13,8 @@ from interfaz.marcos import FondoOndas
 from interfaz.estilos import fuente, hoja_estilos
 from interfaz.vista_analisis import VistaAnalisis
 from interfaz.vista_chat import VistaChat
+from interfaz import servicio_dual
+from interfaz.vista_chat_dual import VistaChatDual
 from interfaz.vista_historial import VistaHistorial
 from interfaz.vista_laboratorio import VistaLaboratorio
 from interfaz.vista_teoria import VistaTeoria
@@ -39,12 +41,16 @@ class VentanaPrincipal(QMainWindow):
 
         self.paginas = QStackedWidget()
         self.vista_chat = VistaChat(self.estado)
+        # Conversación del Chat Dual en su propio archivo, junto al historial (sin mezclarse con él).
+        self.vista_chat_dual = VistaChatDual(
+            ruta=self.estado.almacen.ruta.with_name(servicio_dual.NOMBRE_ARCHIVO))
         self.vista_laboratorio = VistaLaboratorio(self.estado)
         self.vista_analisis = VistaAnalisis(self.estado)
         self.vista_teoria = VistaTeoria(self.estado)
         self.vista_historial = VistaHistorial(self.estado)
-        for vista in (self.vista_chat, self.vista_laboratorio, self.vista_analisis,
-                      self.vista_teoria, self.vista_historial):
+        # El orden coincide con SECCIONES de la barra lateral.
+        for vista in (self.vista_chat, self.vista_chat_dual, self.vista_laboratorio,
+                      self.vista_analisis, self.vista_teoria, self.vista_historial):
             vista.setObjectName("Pagina")
             self.paginas.addWidget(vista)
         fila.addWidget(self.paginas, 1)
@@ -69,14 +75,18 @@ class VentanaPrincipal(QMainWindow):
     def ir_a(self, indice: int) -> None:
         self.paginas.setCurrentIndex(indice)
         self.barra.seleccionar(indice)
-        if indice == 0:
+        actual = self.paginas.currentWidget()
+        if actual is self.vista_chat:
             self.vista_chat.entrada.setFocus()
+        elif actual is self.vista_chat_dual:
+            self.vista_chat_dual.panel_a.entrada.setFocus()
 
     def _avisar(self, mensaje: str) -> None:
         QMessageBox.warning(self, "Historial", mensaje)
 
     def _actualizar_insignia(self) -> None:
-        self.barra.botones[4].set_insignia(len(self.estado.historial))
+        self.barra.botones[self.paginas.indexOf(self.vista_historial)].set_insignia(
+            len(self.estado.historial))
 
 
 def configurar_aplicacion(app: QApplication) -> None:

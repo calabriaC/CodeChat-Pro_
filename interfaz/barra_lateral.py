@@ -23,6 +23,7 @@ INTEGRANTES = [
 
 SECCIONES = [
     ("Chat", "chat"),
+    ("Chat Dual", "usuarios"),
     ("Laboratorio BSC", "laboratorio"),
     ("Análisis", "analisis"),
     ("Teoría", "teoria"),
@@ -97,7 +98,7 @@ class TarjetaIntegrantes(QFrame):
             fila = QFrame()
             fila.setObjectName("FilaIntegrante")
             f = QHBoxLayout(fila)
-            f.setContentsMargins(4, 7, 4, 7)
+            f.setContentsMargins(4, 5, 4, 5)
             f.setSpacing(12)
             f.addWidget(icono_label("usuario", C.ROJO, 18))
             lbl = etiqueta(nombre, "Etiqueta", ajustar=True)
@@ -169,25 +170,28 @@ class BarraLateral(QFrame):
         textos.addLayout(fila_sub)
         marca.addLayout(textos, 1)
         caja.addLayout(marca)
-        caja.addSpacing(30)
+        caja.addSpacing(16)
 
         # ---- Navegación ----------------------------------------------------
         self._grupo = QButtonGroup(self)
         self._grupo.setExclusive(True)
         self.botones: list[BotonNavegacion] = []
+        nav = QVBoxLayout()
+        nav.setSpacing(4)
         for i, (texto, nombre_icono) in enumerate(SECCIONES):
             b = BotonNavegacion(texto, nombre_icono)
+            b.setFixedHeight(46)   # seis secciones caben también en pantallas de 768 px
             b.setToolTip(f"{texto}  (Ctrl+{i + 1})")
             self._grupo.addButton(b, i)
             self.botones.append(b)
-            caja.addWidget(b)
-            caja.addSpacing(2)
+            nav.addWidget(b)
+        caja.addLayout(nav)
         self.botones[0].setChecked(True)
         self._grupo.idClicked.connect(self.seccion_elegida.emit)
 
-        caja.addSpacing(12)
+        caja.addSpacing(6)
         caja.addWidget(_SeparadorLuminoso())
-        caja.addSpacing(14)
+        caja.addSpacing(6)
 
         # ---- Integrantes ---------------------------------------------------
         if INTEGRANTES:

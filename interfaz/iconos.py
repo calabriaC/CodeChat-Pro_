@@ -90,6 +90,8 @@ _ICONOS = {
         '<path d="M19 15v4"/><path d="M17 17h4"/>'
     ),
     "flecha_derecha": '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+    "flecha_izquierda": '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
+    "reiniciar": '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
     "contraer": '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="m14 10 7-7"/><path d="m3 21 7-7"/>',
     "codigo": '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
     "mas": '<path d="M12 5v14"/><path d="M5 12h14"/>',

@@ -7,8 +7,16 @@ from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen, QRadial
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from interfaz import servicio
-from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, separador
-from interfaz.estilos import ANCHO_BARRA_LATERAL, C, qcolor
+from interfaz.componentes import BotonNavegacion, Logo, etiqueta, formato_p, pintar_logo
+from interfaz.estilos import ANCHO_BARRA_LATERAL, C, qcolor, rgba
+
+
+INTEGRANTES = [
+    "Alberto Aponte",
+    "Ethan Barreneche",
+    "Carlos Calabria",
+    "Angel Fontalvo",
+]
 
 SECCIONES = [
     ("Chat", "chat"),
@@ -36,6 +44,68 @@ class _PuntoEstado(QWidget):
         p.setBrush(qcolor(C.VERDE))
         p.drawEllipse(c, 4.5, 4.5)
         p.end()
+
+
+class _ViñetaLogo(QWidget):
+    """Viñeta con el cubo del logotipo de CodeChat Pro."""
+
+    def __init__(self, lado: int = 20, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(lado, lado)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        pintar_logo(p, QRectF(self.rect()))
+        p.end()
+
+
+class TarjetaIntegrantes(QFrame):
+    """Tarjeta del equipo: cabecera con contador y un nombre por fila con el logotipo como viñeta."""
+
+    def __init__(self, nombres: list[str], parent=None):
+        super().__init__(parent)
+        self.setObjectName("TarjetaIntegrantes")
+        self.setStyleSheet(f"""
+            QFrame#TarjetaIntegrantes {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                            stop:0 {rgba(C.PANEL, 0.88)}, stop:1 {rgba(C.FONDO_LATERAL, 0.80)});
+                border: 1px solid {C.BORDE};
+                border-top: 2px solid {rgba(C.ROJO, 0.75)};
+                border-radius: 14px;
+            }}
+            QFrame#FilaIntegrante {{ background: transparent; border: none;
+                                     border-top: 1px solid {C.BORDE_SUAVE}; border-radius: 0; }}""")
+        caja = QVBoxLayout(self)
+        caja.setContentsMargins(14, 12, 14, 8)
+        caja.setSpacing(0)
+
+        cab = QHBoxLayout()
+        cab.setSpacing(8)
+        titulo = etiqueta("INTEGRANTES", "Seccion")
+        titulo.setStyleSheet(f"color: {C.TEXTO_SECUNDARIO};")
+        cab.addWidget(titulo)
+        cab.addStretch(1)
+        contador = QLabel(str(len(nombres)))
+        contador.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        contador.setFixedSize(24, 20)
+        contador.setStyleSheet(f"background: {rgba(C.ROJO, 0.16)}; color: {C.ROJO_CLARO};"
+                               f" border: 1px solid {rgba(C.ROJO, 0.40)}; border-radius: 10px;"
+                               " font-size: 11px; font-weight: 700;")
+        cab.addWidget(contador)
+        caja.addLayout(cab)
+        caja.addSpacing(8)
+
+        for i, nombre in enumerate(nombres):
+            fila = QFrame()
+            fila.setObjectName("FilaIntegrante" if i else "")
+            f = QHBoxLayout(fila)
+            f.setContentsMargins(2, 7, 2, 7)
+            f.setSpacing(11)
+            f.addWidget(_ViñetaLogo(20), 0, Qt.AlignmentFlag.AlignVCenter)
+            lbl = etiqueta(nombre, "Etiqueta", ajustar=True)
+            lbl.setStyleSheet(f"color: {C.TEXTO}; font-size: 14px; font-weight: 500;")
+            f.addWidget(lbl, 1)
+            caja.addWidget(fila)
 
 
 class TarjetaCodigoActual(QFrame):
@@ -116,6 +186,10 @@ class BarraLateral(QFrame):
         self._grupo.idClicked.connect(self.seccion_elegida.emit)
 
         caja.addStretch(1)
+        if INTEGRANTES:
+            caja.addWidget(TarjetaIntegrantes(INTEGRANTES))
+            # Espacio flexible: la tarjeta queda centrada entre el menú y «Sistema listo».
+            caja.addStretch(1)
         self.tarjeta_codigo = TarjetaCodigoActual()
         caja.addWidget(self.tarjeta_codigo)
 
